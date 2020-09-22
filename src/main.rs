@@ -41,6 +41,33 @@ fn ipv4_send_cb() -> Box<dyn FnMut(&[u8]) + Send> {
     })
 }
 
+fn to_map(table: &mut Table) -> HashMap<(u32, u32), u64> {
+    let mut map = HashMap::new();
+
+    for entry in table.iter() {
+        let key = parse_struct(&entry.key);
+        let value = parse_u64(entry.value);
+
+        map.insert((key.pid, key.saddr), value);
+    }
+
+    map
+}
+
+fn parse_struct(addr: &[u8]) -> ipv4_data_t {
+    unsafe { ptr::read(addr.as_ptr() as *const ipv4_data_t) }
+}
+
+fn parse_u64(x: Vec<u8>) -> u64 {
+    let mut v = [0_u8; 8];
+
+    for i in 0..8 {
+        v[i] = *x.get(i).unwrap_or(&0);
+    }
+
+    unsafe { mem::transmute(v) }
+}
+
 fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
     let tcptop = include_str!("bpf/tcptop.c");
 
@@ -85,31 +112,4 @@ fn main() {
             std::process::exit(ExitCode::Success as i32);
         }
     }
-}
-
-fn to_map(table: &mut Table) -> HashMap<(u32, u32), u64> {
-    let mut map = HashMap::new();
-
-    for entry in table.iter() {
-        let key = parse_struct(&entry.key);
-        let value = parse_u64(entry.value);
-
-        map.insert((key.pid, key.saddr), value);
-    }
-
-    map
-}
-
-fn parse_struct(addr: &[u8]) -> ipv4_data_t {
-    unsafe { ptr::read(addr.as_ptr() as *const ipv4_data_t) }
-}
-
-fn parse_u64(x: Vec<u8>) -> u64 {
-    let mut v = [0_u8; 8];
-
-    for i in 0..8 {
-        v[i] = *x.get(i).unwrap_or(&0);
-    }
-
-    unsafe { mem::transmute(v) }
 }
