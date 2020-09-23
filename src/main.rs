@@ -48,6 +48,7 @@ fn to_map(table: &mut Table) -> HashMap<(u32, u32), u64> {
         let key = parse_struct(&entry.key);
         let value = parse_u64(entry.value);
 
+        // TODO: review this, key not uniq
         map.insert((key.pid, key.saddr), value);
     }
 
@@ -81,14 +82,14 @@ fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
         .attach(&mut filter)?;
 
     let ipv4_send_data = filter.table("ipv4_send_data")?;
-    let mut ipv4_send_map = init_perf_map(ipv4_send_data, ipv4_send_cb)?;
+    let mut ipv4_send_map = filter.init_perf_map(ipv4_send_data, ipv4_send_cb)?;
 
     println!("[+] All done! Running...");
 
     println!("PID  |    SADDR    |    DADDR    | LPORT | DPORT | SIZE");
 
     while runnable.load(Ordering::SeqCst) {
-        ipv4_send_map.poll(200);
+        filter.perf_map_poll(200);
     }
 
     Ok(())
