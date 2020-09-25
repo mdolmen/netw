@@ -1,5 +1,6 @@
 /*
- * From BCC example: https://github.com/iovisor/bcc/blob/master/tools/tcptop.py
+ * Adapted from BCC example:
+ *	https://github.com/iovisor/bcc/blob/master/tools/tcptop.py
  */
 
 #include <uapi/linux/ptrace.h>
