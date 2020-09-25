@@ -1,4 +1,4 @@
-use std::{ptr, fmt};
+use std::{ptr, fmt, fs};
 use std::net::{Ipv4Addr};
 
 use crate::PROCESSES;
@@ -13,14 +13,13 @@ pub struct Process {
 }
 
 impl Process {
-    // TODO
-    //fn new() -> Process {
-    //    Process {
-    //        pid: 0,
-    //        name: "none",
-    //        conns: Vec::new(),
-    //    }
-    //}
+    fn new(pid: u32, name: String) -> Self {
+        Process {
+            pid: pid,
+            name: String::from(name),
+            conns: Vec::new(),
+        }
+    }
 
     pub fn print_connections(&self) {
         for c in self.conns.iter() {
@@ -49,10 +48,9 @@ impl Eq for Process {}
 impl fmt::Display for Process {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "PID: {} | NAME: {} | NB CONN: {}",
-            self.pid,
+            f, "{} ({}):",
             self.name,
-            self.conns.len(),
+            self.pid,
         )
     }
 }
@@ -110,12 +108,20 @@ pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
         let mut procs = PROCESSES.lock().unwrap();
 
         // TODO: make a builder for the struct
-        let mut p = Process {
-            pid: data.pid,
-            // TODO
-            name: String::from("placeholder"),
-            conns: Vec::new(),
-        };
+        let path = format!("/proc/{}/comm", data.pid);
+        let mut name = fs::read_to_string(path)
+            .expect("couldn't open proc comm file");
+        // remove trailing newline
+        name.pop();
+
+        let mut p = Process::new(data.pid, name);
+
+        //let mut p = Process {
+        //    pid: data.pid,
+        //    // TODO
+        //    name: String::from( format!("{}{}", ) ),
+        //    conns: Vec::new(),
+        //};
 
         let c = Connection {
             saddr: data.saddr,
