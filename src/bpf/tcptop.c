@@ -13,11 +13,9 @@ struct ipv4_data_t {
     u16 lport;
     u16 dport;
     u32 size;
+    u32 is_rx;
 };
-//BPF_HASH(ipv4_send_bytes, struct ipv4_key_t);
-//BPF_HASH(ipv4_recv_bytes, struct ipv4_key_t);
-BPF_PERF_OUTPUT(ipv4_send_data);
-BPF_PERF_OUTPUT(ipv4_recv_data);
+BPF_PERF_OUTPUT(ipv4_tcp_data);
 
 struct ipv6_data_t {
     unsigned __int128 saddr;
@@ -31,7 +29,7 @@ struct ipv6_data_t {
 //BPF_HASH(ipv6_send_bytes, struct ipv6_key_t);
 //BPF_HASH(ipv6_recv_bytes, struct ipv6_key_t);
 BPF_PERF_OUTPUT(ipv6_send_data);
-BPF_PERF_OUTPUT(ipv6_recv_data);
+BPF_PERF_OUTPUT(ipv6_recv_data); // TODO: use only one perf buffer
 
 int kprobe__tcp_sendmsg(struct pt_regs *ctx, struct sock *sk,
     struct msghdr *msg, size_t size)
@@ -40,16 +38,17 @@ int kprobe__tcp_sendmsg(struct pt_regs *ctx, struct sock *sk,
     u16 dport = 0, family = sk->__sk_common.skc_family;
 
     if (family == AF_INET) {
-        struct ipv4_data_t ipv4_send = {.pid = pid};
+        struct ipv4_data_t ipv4_tcp = {.pid = pid};
 
-        ipv4_send.saddr = sk->__sk_common.skc_rcv_saddr;
-        ipv4_send.daddr = sk->__sk_common.skc_daddr;
-        ipv4_send.lport = sk->__sk_common.skc_num;
+        ipv4_tcp.saddr = sk->__sk_common.skc_rcv_saddr;
+        ipv4_tcp.daddr = sk->__sk_common.skc_daddr;
+        ipv4_tcp.lport = sk->__sk_common.skc_num;
         dport = sk->__sk_common.skc_dport;
-        ipv4_send.dport = ntohs(dport);
-        ipv4_send.size = size;
+        ipv4_tcp.dport = ntohs(dport);
+        ipv4_tcp.size = size;
+	ipv4_tcp.is_rx = 0;
 	
-	ipv4_send_data.perf_submit(ctx, &ipv4_send, sizeof(ipv4_send));
+	ipv4_tcp_data.perf_submit(ctx, &ipv4_tcp, sizeof(ipv4_tcp));
 
     } else if (family == AF_INET6) {
         struct ipv6_data_t ipv6_send = {.pid = pid};
@@ -62,6 +61,7 @@ int kprobe__tcp_sendmsg(struct pt_regs *ctx, struct sock *sk,
         dport = sk->__sk_common.skc_dport;
         ipv6_send.dport = ntohs(dport);
         ipv6_send.size = size;
+	// TODO: is_rx
 
 	ipv6_send_data.perf_submit(ctx, &ipv6_send, sizeof(ipv6_send));
     }
@@ -86,16 +86,17 @@ int kprobe__tcp_cleanup_rbuf(struct pt_regs *ctx, struct sock *sk, int copied)
         return 0;
 
     if (family == AF_INET) {
-        struct ipv4_data_t ipv4_recv = {.pid = pid};
+        struct ipv4_data_t ipv4_tcp = {.pid = pid};
 
-        ipv4_recv.saddr = sk->__sk_common.skc_rcv_saddr;
-        ipv4_recv.daddr = sk->__sk_common.skc_daddr;
-        ipv4_recv.lport = sk->__sk_common.skc_num;
+        ipv4_tcp.saddr = sk->__sk_common.skc_rcv_saddr;
+        ipv4_tcp.daddr = sk->__sk_common.skc_daddr;
+        ipv4_tcp.lport = sk->__sk_common.skc_num;
         dport = sk->__sk_common.skc_dport;
-        ipv4_recv.dport = ntohs(dport);
-        ipv4_recv.size = copied;
+        ipv4_tcp.dport = ntohs(dport);
+        ipv4_tcp.size = copied;
+	ipv4_tcp.is_rx = 1;
 
-	ipv4_recv_data.perf_submit(ctx, &ipv4_recv, sizeof(ipv4_recv));
+	ipv4_tcp_data.perf_submit(ctx, &ipv4_tcp, sizeof(ipv4_tcp));
 
     } else if (family == AF_INET6) {
         struct ipv6_data_t ipv6_recv = {.pid = pid};
@@ -108,6 +109,7 @@ int kprobe__tcp_cleanup_rbuf(struct pt_regs *ctx, struct sock *sk, int copied)
         dport = sk->__sk_common.skc_dport;
         ipv6_recv.dport = ntohs(dport);
         ipv6_recv.size = copied;
+	// TODO: is_rx
 
 	ipv6_recv_data.perf_submit(ctx, &ipv6_recv, sizeof(ipv6_recv));
     }

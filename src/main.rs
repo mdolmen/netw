@@ -30,7 +30,10 @@ struct Connection {
     daddr: u32,
     lport: u16,
     dport: u16,
-    total_size: u64, // TODO: is it really the size or nb packets?
+    rx: u64,
+    tx: u64,
+    // TODO: unit
+    //total_size: u64, // TODO: is it really the size or nb packets?
 }
 
 /*
@@ -82,12 +85,13 @@ impl Eq for Connection {}
 impl fmt::Display for Connection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "\t{}:{} -> {}:{} total: {}",
+            f, "\t{}:{} <-> {}:{} RX: {} TX: {}",
             Ipv4Addr::from(self.saddr.to_be()),
             self.lport,
             Ipv4Addr::from(self.daddr.to_be()),
             self.dport,
-            self.total_size,
+            self.rx,
+            self.tx,
         )
     }
 }
@@ -104,9 +108,10 @@ struct ipv4_data_t {
     lport: u16,
     dport: u16,
     size: u32,
+    is_rx: u32,
 }
 
-fn ipv4_send_cb() -> Box<dyn FnMut(&[u8]) + Send> {
+fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
     Box::new(|x| {
         let data = parse_struct(x);
 
@@ -125,29 +130,28 @@ fn ipv4_send_cb() -> Box<dyn FnMut(&[u8]) + Send> {
             daddr: data.daddr,
             lport: data.lport,
             dport: data.dport,
-            total_size: 0,
+            rx: 0,
+            tx: 0,
+            //total_size: 0,
         };
 
-        // TODO: rename
-        let seen = procs.contains(&p);
+        if procs.contains(&p) {
+            let mut p = procs.iter_mut().find(|x| x.pid == data.pid).unwrap();
 
-        if !seen {
+            if p.conns.contains(&c) {
+                let mut c = p.conns.iter_mut().find(|x| **x == c).unwrap();
+
+                if data.is_rx == 1 {
+                    c.rx += data.size as u64;
+                } else {
+                    c.tx += data.size as u64;
+                }
+            } else {
+                p.conns.push(c);
+            }
+        } else {
             p.conns.push(c);
             procs.push(p);
-        } else {
-            let mut p = procs.iter_mut().find(|x| x.pid == data.pid).unwrap();
-            // TODO: iterates conns
-            // TODO: rename
-            let exist = p.conns.contains(&c);
-
-            if !exist {
-                p.conns.push(c);
-            } else {
-                // TODO: size seems incorrect, add tests
-                let mut c = p.conns.iter_mut().find(|x| **x == c).unwrap();
-                println!("[debug] size = {}", data.size);
-                c.total_size += data.size as u64;
-            }
         }
     })
 }
@@ -159,7 +163,7 @@ fn display(runnable: Arc<AtomicBool>) {
 
         //println!("PID  |    SADDR    |    DADDR    | LPORT | DPORT | SIZE");
 
-        // clear screen
+        // clear the screen
         print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
 
         for p in procs.iter() {
@@ -203,7 +207,7 @@ fn parse_u64(x: Vec<u8>) -> u64 {
 fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
     let tcptop = include_str!("bpf/tcptop.c");
 
-    println!("[+] Compiling and installing filter...");
+    println!("[+] Compiling and installing BPF filters...");
 
     let mut filter = BPF::new(tcptop)?;
 
@@ -211,14 +215,20 @@ fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
         .handler("kprobe__tcp_sendmsg")
         .function("tcp_sendmsg")
         .attach(&mut filter)?;
+    Kprobe::new()
+        .handler("kprobe__tcp_cleanup_rbuf")
+        .function("tcp_cleanup_rbuf")
+        .attach(&mut filter)?;
 
-    let ipv4_send_data = filter.table("ipv4_send_data")?;
+
+    let ipv4_table = filter.table("ipv4_tcp_data")?;
     // TODO: useless var, read the doc
-    let mut _ipv4_send_map = filter.init_perf_map(ipv4_send_data, ipv4_send_cb)?;
+    let _ipv4_map = filter.init_perf_map(ipv4_table, ipv4_tcp_cb)?;
 
     println!("[+] All done! Running...");
 
     while runnable.load(Ordering::SeqCst) {
+        //ipv4_recv_map.poll(200);
         filter.perf_map_poll(200);
     }
 
