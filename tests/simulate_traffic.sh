@@ -11,12 +11,18 @@ fi
 #	echo "Install jq"
 #fi
 
+NC='\033[0m'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+
+output0="sekhmet.json"
+output1="iperf.json"
+
 #
 # Setup network namespace. Could be done without, just used as a convenience not
 # to mess with the host network settings.
 #
 
-output="iperf.json"
 ns="test-traffic"
 v0="veth0"
 v1="veth1"
@@ -44,18 +50,25 @@ echo "[+] Simulating traffic..."
 # IPV4 TCP
 ip netns exec $ns iperf3 -s -B 10.0.10.100 -1 &> /dev/null &
 sleep 1
-ip netns exec $ns iperf3 -4 -c 10.0.10.100 -p 5201 -n 2G -B 10.0.10.200 -J > $output
-sleep 3
+ip netns exec $ns iperf3 -4 -c 10.0.10.100 -p 5201 -n 2G -B 10.0.10.200 -J > $output1
+sleep 5
 kill -s SIGINT $pid
 
 # TODO: IPV4 UDP
 # TODO: IPV6 TCP
 # TODO: IPV6 UDP
 
-# TODO: parse JSON from iperf and sekhmet
-#sum_sender = data['end']['sum_sent']['bytes']
+rx_intercepted=$(cat $output0 | jq '.rx')
+tx_intercepted=$(cat $output0 | jq '.tx')
+rx_iperf=$(cat $output1 | jq '.end.sum_sent.bytes')
+tx_iperf=$(cat $output1 | jq '.end.sum_received.bytes')
 
-# TODO: compare both and print result
+if [ $rx_intercepted == $rx_iperf ] && [ $tx_intercepted == $tx_iperf ]
+then
+	echo -e "[test] ${GREEN}IPV4 TCP: OK${NC}"
+else
+	echo -e "[test] ${RED}IPV4 TCP: iperf3 traffic != traffic intercepted${NC}"
+fi
 
 #
 # Clean up
