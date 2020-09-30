@@ -1,11 +1,11 @@
 use bcc::{BPF, Kprobe, BccError};
 
-use std::{thread, time};
+use std::{thread, time, env};
 use std::sync::{Arc, Mutex};
 
 use core::sync::atomic::{AtomicBool, Ordering};
-use ctrlc;
 use lazy_static::lazy_static;
+use ctrlc;
 
 mod net;
 
@@ -30,7 +30,6 @@ fn display(runnable: Arc<AtomicBool>) {
         for p in procs.iter() {
             println!("{}", p);
 
-            // TODO
             p.print_connections();
         }
     }
@@ -67,18 +66,32 @@ fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
 }
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    let mut test = false;
+
     let runnable = Arc::new(AtomicBool::new(true));
     let arc_main = runnable.clone();
     let arc_display = runnable.clone();
 
+    // TODO: use clap to properly handle args
+    if args.len() > 1 {
+        test = true;
+        println!("[debug] test mode");
+    }
+
     ctrlc::set_handler(move || {
         arc_main.store(false, Ordering::SeqCst);
+        if test {
+            let _ret = net::log_iperf_to_file();
+        }
     })
     .expect("Failed to set handler for SIGINT/SIGTERM");
 
-    thread::spawn(move || {
-        display(arc_display);
-    });
+    if !test {
+        let th_display = thread::spawn(move || {
+            display(arc_display);
+        });
+    }
 
     match do_main(runnable) {
         Err(e) => {

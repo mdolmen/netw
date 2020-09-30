@@ -1,5 +1,9 @@
 use std::{ptr, fmt, fs};
 use std::net::{Ipv4Addr};
+use std::fs::File;
+use std::io::prelude::*;
+
+use serde_json::json;
 
 use crate::PROCESSES;
 
@@ -19,6 +23,10 @@ impl Process {
             name: String::from(name),
             conns: Vec::new(),
         }
+    }
+
+    fn get_connections(&self) -> &Vec<Connection> {
+        &self.conns
     }
 
     pub fn print_connections(&self) {
@@ -109,19 +117,14 @@ pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
 
         // TODO: make a builder for the struct
         let path = format!("/proc/{}/comm", data.pid);
-        let mut name = fs::read_to_string(path)
-            .expect("couldn't open proc comm file");
-        // remove trailing newline
-        name.pop();
+        let mut result = fs::read_to_string(path);
+
+        let name = match result {
+            Ok(mut content) => { content.pop(); content },
+            Err(error) => String::from("file not found"),
+        };
 
         let mut p = Process::new(data.pid, name);
-
-        //let mut p = Process {
-        //    pid: data.pid,
-        //    // TODO
-        //    name: String::from( format!("{}{}", ) ),
-        //    conns: Vec::new(),
-        //};
 
         let c = Connection {
             saddr: data.saddr,
@@ -155,4 +158,48 @@ pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
 
 fn parse_struct(addr: &[u8]) -> ipv4_data_t {
     unsafe { ptr::read(addr.as_ptr() as *const ipv4_data_t) }
+}
+
+/*
+ * Output only a limited amount information for testing purposes.
+ *
+ * Typical traffic interception for iperf:
+ *
+ * iperf3 (221251):
+ *        10.0.10.100:5201 <-> 10.0.10.200:49289 RX: 411 TX: 299
+ *        10.0.10.100:5201 <-> 10.0.10.200:47159 RX: 5368709120 TX: 0
+ * iperf3 (222684):
+ *        10.0.10.200:49289 <-> 10.0.10.100:5201 RX: 299 TX: 411
+ *        10.0.10.200:47159 <-> 10.0.10.100:5201 RX: 0 TX: 5368709120
+ *
+ * We care only about the link with a lot of data and either TX or RX at 0. The other corresponds
+ * to setup of the communication. We want to be sure that we intercept as much data as reported by
+ * iperf. Note that RX may be different than TX due to packet drops (normal behavior).
+ *
+ */
+pub fn log_iperf_to_file() -> std::io::Result<()> {
+    let procs = PROCESSES.lock().unwrap();
+    let mut rx = 0;
+    let mut tx = 0;
+
+    for p in procs.iter() {
+        if p.name == String::from("iperf3") {
+            for c in p.get_connections() {
+                if c.rx == 0 {
+                    tx = c.tx;
+                } else if c.tx == 0 {
+                    rx = c.rx;
+                }
+            }
+        }
+    }
+
+    let output = json!({
+        "rx": rx,
+        "tx": tx
+    });
+    let mut file = File::create("sekhmet.json")?;
+    file.write_all(output.to_string().as_bytes())?;
+
+    Ok(())
 }
