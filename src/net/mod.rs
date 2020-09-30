@@ -115,17 +115,24 @@ pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
 
         let mut procs = PROCESSES.lock().unwrap();
 
-        // TODO: make a builder for the struct
-        let path = format!("/proc/{}/comm", data.pid);
-        let mut result = fs::read_to_string(path);
+        let path_comm = format!("/proc/{}/comm", data.pid);
+        let path_cmdline = format!("/proc/{}/cmdline", data.pid);
+        let mut content_comm = fs::read_to_string(path_comm);
+        let mut content_cmdline = fs::read_to_string(path_cmdline);
 
-        let name = match result {
+        let name = match content_comm {
+            Ok(mut content) => { content.pop(); content },
+            Err(error) => String::from("file not found"),
+        };
+        // TODO: some kind of verbose mode
+        let _cmdline = match content_cmdline {
             Ok(mut content) => { content.pop(); content },
             Err(error) => String::from("file not found"),
         };
 
         let mut p = Process::new(data.pid, name);
 
+        // TODO: make a builder for the struct
         let c = Connection {
             saddr: data.saddr,
             daddr: data.daddr,
