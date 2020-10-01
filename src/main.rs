@@ -88,7 +88,7 @@ fn main() {
     .expect("Failed to set handler for SIGINT/SIGTERM");
 
     if !test {
-        let th_display = thread::spawn(move || {
+        thread::spawn(move || {
             display(arc_display);
         });
     }

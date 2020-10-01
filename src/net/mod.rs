@@ -11,8 +11,10 @@ pub struct Process {
     pid: u32,
     name: String,
     //command: String,
-    conns: Vec<Connection>,
-    //nb_conns: u32,
+    tlinks: Vec<TCPLink>,
+    // TODO: Vec for UDP
+    // TODO: per process total size
+    //nb_tlinks: u32,
     //status: u8, // TODO: enum
 }
 
@@ -21,26 +23,26 @@ impl Process {
         Process {
             pid: pid,
             name: String::from(name),
-            conns: Vec::new(),
+            tlinks: Vec::new(),
         }
     }
 
-    fn get_connections(&self) -> &Vec<Connection> {
-        &self.conns
+    fn get_connections(&self) -> &Vec<TCPLink> {
+        &self.tlinks
     }
 
     pub fn print_connections(&self) {
-        for c in self.conns.iter() {
-            println!("{}", c);
+        for l in self.tlinks.iter() {
+            println!("{}", l);
         }
     }
 }
 
 /*
-impl Connection {
+impl TCPLink {
     // TODO
-    fn new() -> Connection {
-        Connection {
+    fn new() -> TCPLink {
+        TCPLink {
         }
     }
 }
@@ -63,7 +65,8 @@ impl fmt::Display for Process {
     }
 }
 
-struct Connection {
+struct TCPLink {
+    // TODO: make addr as enum to diff between v4 ou v6
     saddr: u32,
     daddr: u32,
     lport: u16,
@@ -74,7 +77,9 @@ struct Connection {
     //total_size: u64, // TODO: is it really the size or nb packets?
 }
 
-impl PartialEq for Connection {
+// TODO: struct for UPD and its implem
+
+impl PartialEq for TCPLink {
     fn eq(&self, other: &Self) -> bool {
         self.saddr == other.saddr
             && self.daddr == other.daddr
@@ -82,9 +87,9 @@ impl PartialEq for Connection {
             && self.dport == other.dport
     }
 }
-impl Eq for Connection {}
+impl Eq for TCPLink {}
 
-impl fmt::Display for Connection {
+impl fmt::Display for TCPLink {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f, "\t{}:{} <-> {}:{} RX: {} TX: {}",
@@ -116,24 +121,24 @@ pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
         let mut procs = PROCESSES.lock().unwrap();
 
         let path_comm = format!("/proc/{}/comm", data.pid);
-        let path_cmdline = format!("/proc/{}/cmdline", data.pid);
-        let mut content_comm = fs::read_to_string(path_comm);
-        let mut content_cmdline = fs::read_to_string(path_cmdline);
+        //let path_cmdline = format!("/proc/{}/cmdline", data.pid);
+        let content_comm = fs::read_to_string(path_comm);
+        //let content_cmdline = fs::read_to_string(path_cmdline);
 
         let name = match content_comm {
             Ok(mut content) => { content.pop(); content },
-            Err(error) => String::from("file not found"),
+            Err(_error) => String::from("file not found"),
         };
         // TODO: some kind of verbose mode
-        let _cmdline = match content_cmdline {
-            Ok(mut content) => { content.pop(); content },
-            Err(error) => String::from("file not found"),
-        };
+        //let _cmdline = match content_cmdline {
+        //    Ok(mut content) => { content.pop(); content },
+        //    Err(error) => String::from("file not found"),
+        //};
 
         let mut p = Process::new(data.pid, name);
 
         // TODO: make a builder for the struct
-        let c = Connection {
+        let l = TCPLink {
             saddr: data.saddr,
             daddr: data.daddr,
             lport: data.lport,
@@ -145,19 +150,19 @@ pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
         if procs.contains(&p) {
             let p = procs.iter_mut().find(|x| x.pid == data.pid).unwrap();
 
-            if p.conns.contains(&c) {
-                let mut c = p.conns.iter_mut().find(|x| **x == c).unwrap();
+            if p.tlinks.contains(&l) {
+                let mut l = p.tlinks.iter_mut().find(|x| **x == l).unwrap();
 
                 if data.is_rx == 1 {
-                    c.rx += data.size as u64;
+                    l.rx += data.size as u64;
                 } else {
-                    c.tx += data.size as u64;
+                    l.tx += data.size as u64;
                 }
             } else {
-                p.conns.push(c);
+                p.tlinks.push(l);
             }
         } else {
-            p.conns.push(c);
+            p.tlinks.push(l);
             procs.push(p);
         }
     })
@@ -191,11 +196,11 @@ pub fn log_iperf_to_file() -> std::io::Result<()> {
 
     for p in procs.iter() {
         if p.name == String::from("iperf3") {
-            for c in p.get_connections() {
-                if c.rx == 0 {
-                    tx = c.tx;
-                } else if c.tx == 0 {
-                    rx = c.rx;
+            for l in p.get_connections() {
+                if l.rx == 0 {
+                    tx = l.tx;
+                } else if l.tx == 0 {
+                    rx = l.rx;
                 }
             }
         }
