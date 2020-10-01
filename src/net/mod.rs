@@ -1,9 +1,7 @@
 use std::{ptr, fmt, fs};
-use std::net::{Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::fs::File;
 use std::io::prelude::*;
-
-use serde_json::json;
 
 use crate::PROCESSES;
 
@@ -11,6 +9,7 @@ pub struct Process {
     pid: u32,
     name: String,
     //command: String,
+    // TODO: vec v4 + vec v6?
     tlinks: Vec<TCPLink>,
     // TODO: Vec for UDP
     // TODO: per process total size
@@ -27,26 +26,16 @@ impl Process {
         }
     }
 
-    fn get_connections(&self) -> &Vec<TCPLink> {
+    fn get_tlinks(&self) -> &Vec<TCPLink> {
         &self.tlinks
     }
 
-    pub fn print_connections(&self) {
+    pub fn print_links(&self) {
         for l in self.tlinks.iter() {
             println!("{}", l);
         }
     }
 }
-
-/*
-impl TCPLink {
-    // TODO
-    fn new() -> TCPLink {
-        TCPLink {
-        }
-    }
-}
-*/
 
 impl PartialEq for Process {
     fn eq(&self, other: &Self) -> bool {
@@ -66,9 +55,8 @@ impl fmt::Display for Process {
 }
 
 struct TCPLink {
-    // TODO: make addr as enum to diff between v4 ou v6
-    saddr: u32,
-    daddr: u32,
+    saddr: IpAddr,
+    daddr: IpAddr,
     lport: u16,
     dport: u16,
     rx: u64,
@@ -78,6 +66,19 @@ struct TCPLink {
 }
 
 // TODO: struct for UPD and its implem
+
+impl TCPLink {
+    fn new(saddr: IpAddr, daddr: IpAddr, lport: u16, dport: u16) -> TCPLink {
+        TCPLink {
+            saddr,
+            daddr,
+            lport,
+            dport,
+            rx: 0,
+            tx: 0,
+        }
+    }
+}
 
 impl PartialEq for TCPLink {
     fn eq(&self, other: &Self) -> bool {
@@ -93,9 +94,9 @@ impl fmt::Display for TCPLink {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f, "\t{}:{} <-> {}:{} RX: {} TX: {}",
-            Ipv4Addr::from(self.saddr.to_be()),
+            self.saddr,
             self.lport,
-            Ipv4Addr::from(self.daddr.to_be()),
+            self.daddr,
             self.dport,
             self.rx,
             self.tx,
@@ -114,9 +115,20 @@ struct ipv4_data_t {
     is_rx: u32,
 }
 
+#[repr(C)]
+struct ipv6_data_t {
+    saddr: u128,
+    daddr: u128,
+    pid: u32,
+    lport: u16,
+    dport: u16,
+    size: u32,
+    is_rx: u32,
+}
+
 pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
     Box::new(|x| {
-        let data = parse_struct(x);
+        let data = parse_struct_ipv4(x);
 
         let mut procs = PROCESSES.lock().unwrap();
 
@@ -137,15 +149,12 @@ pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
 
         let mut p = Process::new(data.pid, name);
 
-        // TODO: make a builder for the struct
-        let l = TCPLink {
-            saddr: data.saddr,
-            daddr: data.daddr,
-            lport: data.lport,
-            dport: data.dport,
-            rx: 0,
-            tx: 0,
-        };
+        let l = TCPLink::new(
+            IpAddr::V4( Ipv4Addr::from(data.saddr.to_be()) ),
+            IpAddr::V4( Ipv4Addr::from(data.daddr.to_be()) ),
+            data.lport,
+            data.dport,
+        );
 
         if procs.contains(&p) {
             let p = procs.iter_mut().find(|x| x.pid == data.pid).unwrap();
@@ -168,8 +177,56 @@ pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
     })
 }
 
-fn parse_struct(addr: &[u8]) -> ipv4_data_t {
+pub fn ipv6_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
+    Box::new(|x| {
+        let data = parse_struct_ipv6(x);
+
+        let mut procs = PROCESSES.lock().unwrap();
+
+        let path_comm = format!("/proc/{}/comm", data.pid);
+        let content_comm = fs::read_to_string(path_comm);
+
+        let name = match content_comm {
+            Ok(mut content) => { content.pop(); content },
+            Err(_error) => String::from("file not found"),
+        };
+
+        let mut p = Process::new(data.pid, name);
+
+        let l = TCPLink::new(
+            IpAddr::V6( Ipv6Addr::from(data.saddr.to_be()) ),
+            IpAddr::V6( Ipv6Addr::from(data.daddr.to_be()) ),
+            data.lport,
+            data.dport,
+        );
+
+        if procs.contains(&p) {
+            let p = procs.iter_mut().find(|x| x.pid == data.pid).unwrap();
+
+            if p.tlinks.contains(&l) {
+                let mut l = p.tlinks.iter_mut().find(|x| **x == l).unwrap();
+
+                if data.is_rx == 1 {
+                    l.rx += data.size as u64;
+                } else {
+                    l.tx += data.size as u64;
+                }
+            } else {
+                p.tlinks.push(l);
+            }
+        } else {
+            p.tlinks.push(l);
+            procs.push(p);
+        }
+    })
+}
+
+fn parse_struct_ipv4(addr: &[u8]) -> ipv4_data_t {
     unsafe { ptr::read(addr.as_ptr() as *const ipv4_data_t) }
+}
+
+fn parse_struct_ipv6(addr: &[u8]) -> ipv6_data_t {
+    unsafe { ptr::read(addr.as_ptr() as *const ipv6_data_t) }
 }
 
 /*
@@ -191,25 +248,35 @@ fn parse_struct(addr: &[u8]) -> ipv4_data_t {
  */
 pub fn log_iperf_to_file() -> std::io::Result<()> {
     let procs = PROCESSES.lock().unwrap();
-    let mut rx = 0;
-    let mut tx = 0;
+    let mut rx4 = 0;
+    let mut tx4 = 0;
+    let mut rx6 = 0;
+    let mut tx6 = 0;
 
     for p in procs.iter() {
         if p.name == String::from("iperf3") {
-            for l in p.get_connections() {
+            for l in p.get_tlinks() {
                 if l.rx == 0 {
-                    tx = l.tx;
+                    println!("{}", l);
+                    if l.saddr.is_ipv4() { tx4 = l.tx; } else { tx6 = l.tx }
                 } else if l.tx == 0 {
-                    rx = l.rx;
+                    println!("{}", l);
+                    if l.saddr.is_ipv4() { rx4 = l.rx; } else { rx6 = l.rx }
                 }
             }
         }
     }
 
-    let output = json!({
-        "rx": rx,
-        "tx": tx
-    });
+    // { ipv4 { rx: rx, tx: tx }, ipv6 { rx: rx, tx: tx } }
+    let output = format!(
+        "{{ \"ipv4\": {{ \"rx\": {}, \"tx\": {} }}, \"ipv6\": {{ \"rx\": {}, \"tx\": {} }} }}",
+        rx4, tx4, rx6, tx6
+    );
+
+    //let output = json!({
+    //    "rx": rx,
+    //    "tx": tx
+    //});
     let mut file = File::create("sekhmet.json")?;
     file.write_all(output.to_string().as_bytes())?;
 

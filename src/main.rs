@@ -30,7 +30,7 @@ fn display(runnable: Arc<AtomicBool>) {
         for p in procs.iter() {
             println!("{}", p);
 
-            p.print_connections();
+            p.print_links();
         }
     }
 }
@@ -53,8 +53,10 @@ fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
 
 
     let ipv4_table = filter.table("ipv4_tcp_data")?;
+    let ipv6_table = filter.table("ipv6_tcp_data")?;
     // TODO: useless var, read the doc
     let _ipv4_map = filter.init_perf_map(ipv4_table, net::ipv4_tcp_cb)?;
+    let _ipv6_map = filter.init_perf_map(ipv6_table, net::ipv6_tcp_cb)?;
 
     println!("[+] All done! Running...");
 
