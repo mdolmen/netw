@@ -25,12 +25,9 @@ struct ipv6_data_t {
     u16 lport;
     u16 dport;
     u32 size;
-    u32 __pad__;
+    u32 is_rx;
 };
-//BPF_HASH(ipv6_send_bytes, struct ipv6_key_t);
-//BPF_HASH(ipv6_recv_bytes, struct ipv6_key_t);
-BPF_PERF_OUTPUT(ipv6_send_data);
-BPF_PERF_OUTPUT(ipv6_recv_data); // TODO: use only one perf buffer
+BPF_PERF_OUTPUT(ipv6_tcp_data);
 
 int kprobe__tcp_sendmsg(struct pt_regs *ctx, struct sock *sk,
     struct msghdr *msg, size_t size)
@@ -52,19 +49,19 @@ int kprobe__tcp_sendmsg(struct pt_regs *ctx, struct sock *sk,
 	ipv4_tcp_data.perf_submit(ctx, &ipv4_tcp, sizeof(ipv4_tcp));
 
     } else if (family == AF_INET6) {
-        struct ipv6_data_t ipv6_send = {.pid = pid};
+        struct ipv6_data_t ipv6_tcp = {.pid = pid};
 
-        bpf_probe_read(&ipv6_send.saddr, sizeof(ipv6_send.saddr),
+        bpf_probe_read(&ipv6_tcp.saddr, sizeof(ipv6_tcp.saddr),
             &sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-        bpf_probe_read(&ipv6_send.daddr, sizeof(ipv6_send.daddr),
+        bpf_probe_read(&ipv6_tcp.daddr, sizeof(ipv6_tcp.daddr),
             &sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
-        ipv6_send.lport = sk->__sk_common.skc_num;
+        ipv6_tcp.lport = sk->__sk_common.skc_num;
         dport = sk->__sk_common.skc_dport;
-        ipv6_send.dport = ntohs(dport);
-        ipv6_send.size = size;
-	// TODO: is_rx
+        ipv6_tcp.dport = ntohs(dport);
+        ipv6_tcp.size = size;
+	ipv6_tcp.is_rx = 0;
 
-	ipv6_send_data.perf_submit(ctx, &ipv6_send, sizeof(ipv6_send));
+	ipv6_tcp_data.perf_submit(ctx, &ipv6_tcp, sizeof(ipv6_tcp));
     }
     // else drop
 
@@ -100,19 +97,19 @@ int kprobe__tcp_cleanup_rbuf(struct pt_regs *ctx, struct sock *sk, int copied)
 	ipv4_tcp_data.perf_submit(ctx, &ipv4_tcp, sizeof(ipv4_tcp));
 
     } else if (family == AF_INET6) {
-        struct ipv6_data_t ipv6_recv = {.pid = pid};
+        struct ipv6_data_t ipv6_tcp = {.pid = pid};
 
-        bpf_probe_read(&ipv6_recv.saddr, sizeof(ipv6_recv.saddr),
+        bpf_probe_read(&ipv6_tcp.saddr, sizeof(ipv6_tcp.saddr),
             &sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-        bpf_probe_read(&ipv6_recv.daddr, sizeof(ipv6_recv.daddr),
+        bpf_probe_read(&ipv6_tcp.daddr, sizeof(ipv6_tcp.daddr),
             &sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
-        ipv6_recv.lport = sk->__sk_common.skc_num;
+        ipv6_tcp.lport = sk->__sk_common.skc_num;
         dport = sk->__sk_common.skc_dport;
-        ipv6_recv.dport = ntohs(dport);
-        ipv6_recv.size = copied;
-	// TODO: is_rx
+        ipv6_tcp.dport = ntohs(dport);
+        ipv6_tcp.size = copied;
+	ipv6_tcp.is_rx = 1;
 
-	ipv6_recv_data.perf_submit(ctx, &ipv6_recv, sizeof(ipv6_recv));
+	ipv6_tcp_data.perf_submit(ctx, &ipv6_tcp, sizeof(ipv6_tcp));
     }
     // else drop
 
