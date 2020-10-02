@@ -36,11 +36,11 @@ fn display(runnable: Arc<AtomicBool>) {
 }
 
 fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
-    let tcptop = include_str!("bpf/tcptop.c");
+    let tcp = include_str!("bpf/tcp.c");
 
     println!("[+] Compiling and installing BPF filters...");
 
-    let mut filter = BPF::new(tcptop)?;
+    let mut filter = BPF::new(tcp)?;
 
     Kprobe::new()
         .handler("kprobe__tcp_sendmsg")
