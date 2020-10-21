@@ -5,15 +5,28 @@ use std::io::prelude::*;
 
 use crate::PROCESSES;
 
+extern crate num;
+
+#[derive(Copy, Clone, FromPrimitive)]
+pub enum DataUnit {
+    Bytes,
+    KBytes,
+    MBytes,
+    GBytes,
+    TBytes,
+}
+
 pub struct Process {
     pid: u32,
     name: String,
     //command: String,
     // TODO: vec v4 + vec v6?
     tlinks: Vec<TCPLink>,
+    //nb_tlinks: u32,
     // TODO: Vec for UDP
     // TODO: per process total size
-    //nb_tlinks: u32,
+    rx: u64,
+    tx: u64,
     //status: u8, // TODO: enum
 }
 
@@ -23,11 +36,21 @@ impl Process {
             pid: pid,
             name: String::from(name),
             tlinks: Vec::new(),
+            rx: 0,
+            tx: 0,
         }
     }
 
     fn get_tlinks(&self) -> &Vec<TCPLink> {
         &self.tlinks
+    }
+
+    fn add_data(&mut self, size: u64, is_rx: u32) {
+        match is_rx {
+            0 => self.tx += size,
+            1 => self.rx += size,
+            _ => (),
+        }
     }
 
     pub fn print_links(&self) {
@@ -46,10 +69,29 @@ impl Eq for Process {}
 
 impl fmt::Display for Process {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (rx, rx_unit) = group_bytes(self.rx);
+        let (tx, tx_unit) = group_bytes(self.tx);
+
         write!(
-            f, "{} ({}):",
+            f, "{} ({}) RX:{:.2}{u0} TX:{:.2}{u1}:",
             self.name,
             self.pid,
+            rx,
+            tx,
+            u0 = match rx_unit {
+                DataUnit::Bytes => "B",
+                DataUnit::KBytes => "KB",
+                DataUnit::MBytes => "MB",
+                DataUnit::GBytes => "GB",
+                DataUnit::TBytes => "TB",
+            },
+            u1 = match tx_unit {
+                DataUnit::Bytes => "B",
+                DataUnit::KBytes => "KB",
+                DataUnit::MBytes => "MB",
+                DataUnit::GBytes => "GB",
+                DataUnit::TBytes => "TB",
+            },
         )
     }
 }
@@ -78,6 +120,16 @@ impl TCPLink {
             tx: 0,
         }
     }
+
+    fn add_data(&mut self, size: u64, is_rx: u32) {
+        match is_rx {
+            0 => self.tx += size,
+            1 => self.rx += size,
+            _ => (),
+        }
+
+        //if self.rx >= 1024 { self.unit += 1 }
+    }
 }
 
 impl PartialEq for TCPLink {
@@ -92,14 +144,31 @@ impl Eq for TCPLink {}
 
 impl fmt::Display for TCPLink {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (rx, rx_unit) = group_bytes(self.rx);
+        let (tx, tx_unit) = group_bytes(self.tx);
+
         write!(
-            f, "\t{}:{} <-> {}:{} RX: {} TX: {}",
+            f, "\t{}:{} <-> {}:{} RX: {:.2}{u0} TX: {:.2}{u1}",
             self.saddr,
             self.lport,
             self.daddr,
             self.dport,
-            self.rx,
-            self.tx,
+            rx,
+            tx,
+            u0 = match rx_unit {
+                DataUnit::Bytes => "B",
+                DataUnit::KBytes => "KB",
+                DataUnit::MBytes => "MB",
+                DataUnit::GBytes => "GB",
+                DataUnit::TBytes => "TB",
+            },
+            u1 = match tx_unit {
+                DataUnit::Bytes => "B",
+                DataUnit::KBytes => "KB",
+                DataUnit::MBytes => "MB",
+                DataUnit::GBytes => "GB",
+                DataUnit::TBytes => "TB",
+            },
         )
     }
 }
@@ -149,24 +218,24 @@ pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
 
         let mut p = Process::new(data.pid, name);
 
-        let l = TCPLink::new(
+        let mut l = TCPLink::new(
             IpAddr::V4( Ipv4Addr::from(data.saddr.to_be()) ),
             IpAddr::V4( Ipv4Addr::from(data.daddr.to_be()) ),
             data.lport,
             data.dport,
         );
+        l.add_data(data.size as u64, data.is_rx);
+        p.add_data(data.size as u64, data.is_rx);
 
         if procs.contains(&p) {
             let p = procs.iter_mut().find(|x| x.pid == data.pid).unwrap();
 
-            if p.tlinks.contains(&l) {
-                let mut l = p.tlinks.iter_mut().find(|x| **x == l).unwrap();
+            p.add_data(data.size as u64, data.is_rx);
 
-                if data.is_rx == 1 {
-                    l.rx += data.size as u64;
-                } else {
-                    l.tx += data.size as u64;
-                }
+            if p.tlinks.contains(&l) {
+                let l = p.tlinks.iter_mut().find(|x| **x == l).unwrap();
+
+                l.add_data(data.size as u64, data.is_rx);
             } else {
                 p.tlinks.push(l);
             }
@@ -228,6 +297,23 @@ fn parse_struct_ipv4(addr: &[u8]) -> ipv4_data_t {
 fn parse_struct_ipv6(addr: &[u8]) -> ipv6_data_t {
     unsafe { ptr::read(addr.as_ptr() as *const ipv6_data_t) }
 }
+
+fn group_bytes(bytes: u64) -> (f64, DataUnit) {
+    let mut i = 0;
+    let mut grouped = bytes as f64;
+
+    while grouped >= 1024.0 {
+        i += 1;
+        grouped /= 1024.0;
+    }
+
+    let unit = match num::FromPrimitive::from_u32(i) {
+        Some(x) => x,
+        _ => DataUnit::Bytes,
+    };
+
+    (grouped, unit)
+ }
 
 /*
  * Output only a limited amount information for testing purposes.

@@ -7,6 +7,9 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use lazy_static::lazy_static;
 use ctrlc;
 
+#[macro_use]
+extern crate num_derive;
+
 mod net;
 
 enum ExitCode {
