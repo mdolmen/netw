@@ -24,7 +24,6 @@ pub struct Process {
     tlinks: Vec<TCPLink>,
     //nb_tlinks: u32,
     // TODO: Vec for UDP
-    // TODO: per process total size
     rx: u64,
     tx: u64,
     //status: u8, // TODO: enum
@@ -127,8 +126,6 @@ impl TCPLink {
             1 => self.rx += size,
             _ => (),
         }
-
-        //if self.rx >= 1024 { self.unit += 1 }
     }
 }
 
@@ -224,22 +221,23 @@ pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
             data.lport,
             data.dport,
         );
-        l.add_data(data.size as u64, data.is_rx);
-        p.add_data(data.size as u64, data.is_rx);
 
         if procs.contains(&p) {
-            let p = procs.iter_mut().find(|x| x.pid == data.pid).unwrap();
+            let known_p = procs.iter_mut().find(|x| x.pid == data.pid).unwrap();
 
-            p.add_data(data.size as u64, data.is_rx);
+            known_p.add_data(data.size as u64, data.is_rx);
 
-            if p.tlinks.contains(&l) {
-                let l1 = p.tlinks.iter_mut().find(|x| **x == l).unwrap();
+            if known_p.tlinks.contains(&l) {
+                let known_link = known_p.tlinks.iter_mut().find(|x| **x == l).unwrap();
 
-                l1.add_data(data.size as u64, data.is_rx);
+                known_link.add_data(data.size as u64, data.is_rx);
             } else {
-                p.tlinks.push(l);
+                l.add_data(data.size as u64, data.is_rx);
+                known_p.tlinks.push(l);
             }
         } else {
+            l.add_data(data.size as u64, data.is_rx);
+            p.add_data(data.size as u64, data.is_rx);
             p.tlinks.push(l);
             procs.push(p);
         }
@@ -262,7 +260,7 @@ pub fn ipv6_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
 
         let mut p = Process::new(data.pid, name);
 
-        let l = TCPLink::new(
+        let mut l = TCPLink::new(
             IpAddr::V6( Ipv6Addr::from(data.saddr.to_be()) ),
             IpAddr::V6( Ipv6Addr::from(data.daddr.to_be()) ),
             data.lport,
@@ -270,20 +268,21 @@ pub fn ipv6_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
         );
 
         if procs.contains(&p) {
-            let p = procs.iter_mut().find(|x| x.pid == data.pid).unwrap();
+            let known_p = procs.iter_mut().find(|x| x.pid == data.pid).unwrap();
 
-            if p.tlinks.contains(&l) {
-                let mut l = p.tlinks.iter_mut().find(|x| **x == l).unwrap();
+            known_p.add_data(data.size as u64, data.is_rx);
 
-                if data.is_rx == 1 {
-                    l.rx += data.size as u64;
-                } else {
-                    l.tx += data.size as u64;
-                }
+            if known_p.tlinks.contains(&l) {
+                let known_link = known_p.tlinks.iter_mut().find(|x| **x == l).unwrap();
+
+                known_link.add_data(data.size as u64, data.is_rx);
             } else {
-                p.tlinks.push(l);
+                l.add_data(data.size as u64, data.is_rx);
+                known_p.tlinks.push(l);
             }
         } else {
+            l.add_data(data.size as u64, data.is_rx);
+            p.add_data(data.size as u64, data.is_rx);
             p.tlinks.push(l);
             procs.push(p);
         }
@@ -328,8 +327,11 @@ fn group_bytes(bytes: u64) -> (f64, DataUnit) {
  *        10.0.10.200:47159 <-> 10.0.10.100:5201 RX: 0 TX: 5368709120
  *
  * We care only about the link with a lot of data and either TX or RX at 0. The other corresponds
- * to setup of the communication. We want to be sure that we intercept as much data as reported by
- * iperf. Note that RX may be different than TX due to packet drops (normal behavior).
+ * to the setup of the communication between client/server. We want to be sure that we intercept
+ * the same amount of data reported by to be transferred by iperf. The actual intercepted traffic
+ * should be slightly higher du to the packets used to establish the comm (precisely 37 bytes,
+ * based on observations => hardcoded in the testing script, works for now...). Note that RX may be
+ * different than TX due to packet drops (normal behavior).
  *
  */
 pub fn log_iperf_to_file() -> std::io::Result<()> {
@@ -353,16 +355,11 @@ pub fn log_iperf_to_file() -> std::io::Result<()> {
         }
     }
 
-    // { ipv4 { rx: rx, tx: tx }, ipv6 { rx: rx, tx: tx } }
     let output = format!(
         "{{ \"ipv4\": {{ \"rx\": {}, \"tx\": {} }}, \"ipv6\": {{ \"rx\": {}, \"tx\": {} }} }}",
         rx4, tx4, rx6, tx6
     );
 
-    //let output = json!({
-    //    "rx": rx,
-    //    "tx": tx
-    //});
     let mut file = File::create("sekhmet.json")?;
     file.write_all(output.to_string().as_bytes())?;
 

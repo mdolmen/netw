@@ -37,7 +37,8 @@ test_result () {
 	rx_iperf=$(cat $2 | jq '.end.sum_received.bytes')
 	tx_iperf=$(cat $2 | jq '.end.sum_sent.bytes')
 
-	if [ $rx_intercepted == $rx_iperf ] && [ $tx_intercepted == $tx_iperf ]
+	# cf. comments in src/net/mod.rs:log_iperf_to_file() for why +37
+	if (( $rx_intercepted == $rx_iperf+37 )) && (( $tx_intercepted == $tx_iperf+37 ))
 	then
 		echo -e "[test] ${GREEN}$1 TCP: OK${NC}"
 	else
