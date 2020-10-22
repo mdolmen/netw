@@ -7,7 +7,7 @@ use crate::PROCESSES;
 
 extern crate num;
 
-#[derive(Copy, Clone, FromPrimitive)]
+#[derive(Copy, Clone, Debug, FromPrimitive)]
 pub enum DataUnit {
     Bytes,
     KBytes,
@@ -367,4 +367,66 @@ pub fn log_iperf_to_file() -> std::io::Result<()> {
     file.write_all(output.to_string().as_bytes())?;
 
     Ok(())
+}
+
+/*
+ * TESTS
+ */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // TODO: refactor first?!
+    // whatever_cb
+
+    #[test]
+    fn group_bytes_bytes() {
+        let bytes = 123;
+
+        let (grouped, unit) = group_bytes(bytes);
+
+        assert_eq!(grouped, 123.0);
+        assert_eq!(unit as u32, DataUnit::Bytes as u32);
+    }
+
+    #[test]
+    fn group_bytes_kbytes() {
+        let bytes = 1024+512;
+
+        let (grouped, unit) = group_bytes(bytes);
+
+        assert_eq!(grouped, 1.5);
+        assert_eq!(unit as u32, DataUnit::KBytes as u32);
+    }
+
+    #[test]
+    fn group_bytes_mbytes() {
+        let bytes = 1024*1024 + 512*1024;
+
+        let (grouped, unit) = group_bytes(bytes);
+
+        assert_eq!(grouped, 1.5);
+        assert_eq!(unit as u32, DataUnit::MBytes as u32);
+    }
+
+    #[test]
+    fn group_bytes_gbytes() {
+        let bytes = 1024*1024*1024 + 512*1024*1024;
+
+        let (grouped, unit) = group_bytes(bytes);
+
+        assert_eq!(grouped, 1.5);
+        assert_eq!(unit as u32, DataUnit::GBytes as u32);
+    }
+
+    #[test]
+    fn group_bytes_tbytes() {
+        let bytes = 1024*1024*1024*1024 + 512*1024*1024*1024;
+
+        let (grouped, unit) = group_bytes(bytes);
+
+        assert_eq!(grouped, 1.5);
+        assert_eq!(unit as u32, DataUnit::TBytes as u32);
+    }
 }
