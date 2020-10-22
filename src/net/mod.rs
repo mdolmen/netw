@@ -233,9 +233,9 @@ pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
             p.add_data(data.size as u64, data.is_rx);
 
             if p.tlinks.contains(&l) {
-                let l = p.tlinks.iter_mut().find(|x| **x == l).unwrap();
+                let l1 = p.tlinks.iter_mut().find(|x| **x == l).unwrap();
 
-                l.add_data(data.size as u64, data.is_rx);
+                l1.add_data(data.size as u64, data.is_rx);
             } else {
                 p.tlinks.push(l);
             }
@@ -377,8 +377,106 @@ pub fn log_iperf_to_file() -> std::io::Result<()> {
 mod tests {
     use super::*;
 
+    unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+        std::slice::from_raw_parts(
+            (p as *const T) as *const u8,
+            std::mem::size_of::<T>(),
+        )
+    }
+
     // TODO: refactor first?!
     // whatever_cb
+    #[test]
+    fn tcp_cb_one_process_multiple_links() {
+        // clear the vector of process in case other test executed before
+        {
+            let mut procs = PROCESSES.lock().unwrap();
+
+            // no elements should match that condition
+            procs.retain(|e| e.pid == u32::MAX);
+        }
+
+        let data0 = ipv4_data_t {
+            pid: 1234,
+            saddr: 33663168,    // 192.168.1.2
+            daddr: 3361999370,  // 10.10.100.200
+            lport: 4321,
+            dport: 80,
+            size: 56789,
+            is_rx: 1,
+        };
+        let data1 = ipv4_data_t {
+            pid: 1234,
+            saddr: 33663168,    // 192.168.1.2
+            daddr: 3361999370,  // 10.10.100.200
+            lport: 4321,
+            dport: 80,
+            size: 567890,
+            is_rx: 0,
+        };
+        let mut ptr = ipv4_tcp_cb();
+
+        ptr( unsafe {any_as_u8_slice(&data0)} );
+        ptr( unsafe {any_as_u8_slice(&data1)} );
+
+        let procs = PROCESSES.lock().unwrap();
+
+        assert_eq!(procs.len(), 1, "number of process incorrect");
+
+        let p = procs.iter().next().unwrap();
+        let c = p.tlinks.iter().next().unwrap();
+        let ip_src = IpAddr::V4( Ipv4Addr::new(192, 168, 1, 2) );
+        let ip_dst = IpAddr::V4( Ipv4Addr::new(10, 10, 100, 200) );
+
+        assert_eq!(p.pid, 1234, "pid incorrect");
+        assert_ne!(p.name, "", "process name empty");
+        assert_eq!(p.rx, 56789, "process rx incorrect");
+        assert_eq!(p.tx, 567890, "process tx incorrect");
+        assert_eq!(c.saddr, ip_src, "source ip address incorrect");
+        assert_eq!(c.daddr, ip_dst, "destination ip address incorrect");
+        assert_eq!(c.lport, 4321, "local port incorrect");
+        assert_eq!(c.dport, 80, "destination port incorrect");
+        assert_eq!(c.rx, 56789, "rx size incorrect");
+        assert_eq!(c.tx, 567890, "tx size incorrect");
+    }
+
+    #[test]
+    fn tcp_cb_multiple_process_one_link() {
+        // clear the vector of process in case other test executed before
+        {
+            let mut procs = PROCESSES.lock().unwrap();
+
+            // no elements should match that condition
+            procs.retain(|e| e.pid == u32::MAX);
+        }
+
+        let data0 = ipv4_data_t {
+            pid: 1234,
+            saddr: 33663168,    // 192.168.1.2
+            daddr: 3361999370,  // 10.10.100.200
+            lport: 4321,
+            dport: 80,
+            size: 56789,
+            is_rx: 1,
+        };
+        let data1 = ipv4_data_t {
+            pid: 5678,
+            saddr: 3232235778,  // 192.168.1.2
+            daddr: 168453320,   // 10.10.100.200
+            lport: 4321,
+            dport: 80,
+            size: 56789,
+            is_rx: 0,
+        };
+        let mut ptr = ipv4_tcp_cb();
+
+        ptr( unsafe {any_as_u8_slice(&data0)} );
+        ptr( unsafe {any_as_u8_slice(&data1)} );
+
+        let procs = PROCESSES.lock().unwrap();
+
+        assert_eq!(procs.len(), 2, "number of process incorrect");
+    }
 
     #[test]
     fn group_bytes_bytes() {
