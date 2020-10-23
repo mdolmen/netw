@@ -1,7 +1,7 @@
 Sekhmet
 =======
 
-Godess of war and destroyer of the enemies. (*britanicca.com*)
+Goddess of war and destroyer of the ennemies. (*britanicca.com*)
 
 
 What?
@@ -28,4 +28,36 @@ Current approach
 Status
 ------
 
-Project initialized.
+Working version.
+
+* Display processes communicating over the network
+* Display amount of data transferred per link and per process
+* All links are displayed, wether established or not
+* TCP and UDP, IPv4 and IPv6
+
+
+How to use
+----------
+
+Run:
+
+```bash
+cargo build
+sudo ./target/debug/sekhmet
+```
+
+Unit tests:
+
+```bash
+# --test-threads=1 important otherwise fails occasionaly because of the global
+# vector containing the processes being empty when accessed. Only an issue when
+# test cases are run concurrently.
+cargo test -- --test-threads=1
+```
+
+Test that you actually intercept something:
+
+```bash
+cd tests
+sudo ./simulate_traffic.sh
+```
