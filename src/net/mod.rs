@@ -30,10 +30,10 @@ pub struct Process {
 }
 
 impl Process {
-    fn new(pid: u32, name: String) -> Self {
+    fn new(pid: u32) -> Self {
         Process {
             pid: pid,
-            name: String::from(name),
+            name: String::new(),
             tlinks: Vec::new(),
             rx: 0,
             tx: 0,
@@ -50,6 +50,11 @@ impl Process {
             1 => self.rx += size,
             _ => (),
         }
+    }
+
+    fn name(&mut self, name: String) -> &mut Self {
+        self.name = name;
+        self
     }
 
     pub fn print_links(&self) {
@@ -196,11 +201,56 @@ pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
     Box::new(|x| {
         let data = parse_struct_ipv4(x);
 
-        let mut procs = PROCESSES.lock().unwrap();
+        let p = Process::new(data.pid);
 
-        let path_comm = format!("/proc/{}/comm", data.pid);
-        //let path_cmdline = format!("/proc/{}/cmdline", data.pid);
+        let l = TCPLink::new(
+            IpAddr::V4( Ipv4Addr::from(data.saddr.to_be()) ),
+            IpAddr::V4( Ipv4Addr::from(data.daddr.to_be()) ),
+            data.lport,
+            data.dport,
+        );
+
+        update_procs_and_links(p, l, data.size as u64, data.is_rx);
+    })
+}
+
+pub fn ipv6_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
+    Box::new(|x| {
+        let data = parse_struct_ipv6(x);
+
+        let p = Process::new(data.pid);
+
+        let l = TCPLink::new(
+            IpAddr::V6( Ipv6Addr::from(data.saddr.to_be()) ),
+            IpAddr::V6( Ipv6Addr::from(data.daddr.to_be()) ),
+            data.lport,
+            data.dport,
+        );
+
+        update_procs_and_links(p, l, data.size as u64, data.is_rx);
+    })
+}
+
+fn update_procs_and_links(mut p: Process, mut l: TCPLink, packets_size: u64, is_rx: u32) {
+    let mut procs = PROCESSES.lock().unwrap();
+
+    if procs.contains(&p) {
+        let known_p = procs.iter_mut().find(|x| x.pid == p.pid).unwrap();
+
+        known_p.add_data(packets_size, is_rx);
+
+        if known_p.tlinks.contains(&l) {
+            let known_link = known_p.tlinks.iter_mut().find(|x| **x == l).unwrap();
+
+            known_link.add_data(packets_size, is_rx);
+        } else {
+            l.add_data(packets_size, is_rx);
+            known_p.tlinks.push(l);
+        }
+    } else {
+        let path_comm = format!("/proc/{}/comm", p.pid);
         let content_comm = fs::read_to_string(path_comm);
+        //let path_cmdline = format!("/proc/{}/cmdline", data.pid);
         //let content_cmdline = fs::read_to_string(path_cmdline);
 
         let name = match content_comm {
@@ -213,80 +263,12 @@ pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
         //    Err(error) => String::from("file not found"),
         //};
 
-        let mut p = Process::new(data.pid, name);
-
-        let mut l = TCPLink::new(
-            IpAddr::V4( Ipv4Addr::from(data.saddr.to_be()) ),
-            IpAddr::V4( Ipv4Addr::from(data.daddr.to_be()) ),
-            data.lport,
-            data.dport,
-        );
-
-        if procs.contains(&p) {
-            let known_p = procs.iter_mut().find(|x| x.pid == data.pid).unwrap();
-
-            known_p.add_data(data.size as u64, data.is_rx);
-
-            if known_p.tlinks.contains(&l) {
-                let known_link = known_p.tlinks.iter_mut().find(|x| **x == l).unwrap();
-
-                known_link.add_data(data.size as u64, data.is_rx);
-            } else {
-                l.add_data(data.size as u64, data.is_rx);
-                known_p.tlinks.push(l);
-            }
-        } else {
-            l.add_data(data.size as u64, data.is_rx);
-            p.add_data(data.size as u64, data.is_rx);
-            p.tlinks.push(l);
-            procs.push(p);
-        }
-    })
-}
-
-pub fn ipv6_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
-    Box::new(|x| {
-        let data = parse_struct_ipv6(x);
-
-        let mut procs = PROCESSES.lock().unwrap();
-
-        let path_comm = format!("/proc/{}/comm", data.pid);
-        let content_comm = fs::read_to_string(path_comm);
-
-        let name = match content_comm {
-            Ok(mut content) => { content.pop(); content },
-            Err(_error) => String::from("file not found"),
-        };
-
-        let mut p = Process::new(data.pid, name);
-
-        let mut l = TCPLink::new(
-            IpAddr::V6( Ipv6Addr::from(data.saddr.to_be()) ),
-            IpAddr::V6( Ipv6Addr::from(data.daddr.to_be()) ),
-            data.lport,
-            data.dport,
-        );
-
-        if procs.contains(&p) {
-            let known_p = procs.iter_mut().find(|x| x.pid == data.pid).unwrap();
-
-            known_p.add_data(data.size as u64, data.is_rx);
-
-            if known_p.tlinks.contains(&l) {
-                let known_link = known_p.tlinks.iter_mut().find(|x| **x == l).unwrap();
-
-                known_link.add_data(data.size as u64, data.is_rx);
-            } else {
-                l.add_data(data.size as u64, data.is_rx);
-                known_p.tlinks.push(l);
-            }
-        } else {
-            l.add_data(data.size as u64, data.is_rx);
-            p.add_data(data.size as u64, data.is_rx);
-            p.tlinks.push(l);
-            procs.push(p);
-        }
-    })
+        p.name(name);
+        l.add_data(packets_size, is_rx);
+        p.add_data(packets_size, is_rx);
+        p.tlinks.push(l);
+        procs.push(p);
+    }
 }
 
 fn parse_struct_ipv4(addr: &[u8]) -> ipv4_data_t {
@@ -384,7 +366,7 @@ mod tests {
     // TODO: refactor first?!
     // whatever_cb
     #[test]
-    fn tcp_cb_one_process_multiple_links() {
+    fn tcp4_cb_one_process_multiple_links() {
         // clear the vector of process in case other test executed before
         {
             let mut procs = PROCESSES.lock().unwrap();
@@ -438,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn tcp_cb_multiple_process_one_link() {
+    fn tcp4_cb_multiple_process_one_link() {
         // clear the vector of process in case other test executed before
         {
             let mut procs = PROCESSES.lock().unwrap();
