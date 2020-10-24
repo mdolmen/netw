@@ -16,12 +16,19 @@ pub enum DataUnit {
     TBytes,
 }
 
+#[derive(PartialEq, Debug)]
+pub enum Prot {
+    NONE,
+    TCP,
+    UDP,
+}
+
 pub struct Process {
     pid: u32,
     name: String,
     //command: String,
     // TODO: vec v4 + vec v6?
-    tlinks: Vec<TCPLink>,
+    tlinks: Vec<Link>,
     //nb_tlinks: u32,
     // TODO: Vec for UDP
     rx: u64,
@@ -40,7 +47,7 @@ impl Process {
         }
     }
 
-    fn get_tlinks(&self) -> &Vec<TCPLink> {
+    fn get_tlinks(&self) -> &Vec<Link> {
         &self.tlinks
     }
 
@@ -100,28 +107,28 @@ impl fmt::Display for Process {
     }
 }
 
-struct TCPLink {
+struct Link {
     saddr: IpAddr,
     daddr: IpAddr,
     lport: u16,
     dport: u16,
     rx: u64,
     tx: u64,
-    // TODO: unit
-    //total_size: u64, // TODO: is it really the size or nb packets?
+    prot: Prot,
 }
 
 // TODO: struct for UPD and its implem
 
-impl TCPLink {
-    fn new(saddr: IpAddr, daddr: IpAddr, lport: u16, dport: u16) -> TCPLink {
-        TCPLink {
+impl Link {
+    fn new(saddr: IpAddr, daddr: IpAddr, lport: u16, dport: u16) -> Link {
+        Link {
             saddr,
             daddr,
             lport,
             dport,
             rx: 0,
             tx: 0,
+            prot: Prot::NONE,
         }
     }
 
@@ -132,25 +139,31 @@ impl TCPLink {
             _ => (),
         }
     }
+
+    fn prot(&mut self, prot: Prot) -> &mut Self {
+        self.prot = prot;
+        self
+    }
 }
 
-impl PartialEq for TCPLink {
+impl PartialEq for Link {
     fn eq(&self, other: &Self) -> bool {
         self.saddr == other.saddr
             && self.daddr == other.daddr
             && self.lport == other.lport
             && self.dport == other.dport
+            && self.prot == other.prot
     }
 }
-impl Eq for TCPLink {}
+impl Eq for Link {}
 
-impl fmt::Display for TCPLink {
+impl fmt::Display for Link {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (rx, rx_unit) = group_bytes(self.rx);
         let (tx, tx_unit) = group_bytes(self.tx);
 
         write!(
-            f, "\t{}:{} <-> {}:{} RX: {:.2}{u0} TX: {:.2}{u1}",
+            f, "\t{p} {}:{} <-> {}:{} RX: {:.2}{u0} TX: {:.2}{u1}",
             self.saddr,
             self.lport,
             self.daddr,
@@ -171,10 +184,16 @@ impl fmt::Display for TCPLink {
                 DataUnit::GBytes => "GB",
                 DataUnit::TBytes => "TB",
             },
+            p = match self.prot {
+                Prot::NONE => "NONE",
+                Prot::TCP => "TCP",
+                Prot::UDP => "UDP",
+            }
         )
     }
 }
 
+// TODO: may need to separate TCP/UDP if we track the connection state or do other specific things
 #[repr(C)]
 struct ipv4_data_t {
     pid: u32,
@@ -197,41 +216,79 @@ struct ipv6_data_t {
     is_rx: u32,
 }
 
-pub fn ipv4_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
+pub fn tcp4_cb() -> Box<dyn FnMut(&[u8]) + Send> {
     Box::new(|x| {
         let data = parse_struct_ipv4(x);
 
         let p = Process::new(data.pid);
 
-        let l = TCPLink::new(
+        let mut l = Link::new(
             IpAddr::V4( Ipv4Addr::from(data.saddr.to_be()) ),
             IpAddr::V4( Ipv4Addr::from(data.daddr.to_be()) ),
             data.lport,
             data.dport,
         );
+        l.prot(Prot::TCP);
 
         update_procs_and_links(p, l, data.size as u64, data.is_rx);
     })
 }
 
-pub fn ipv6_tcp_cb() -> Box<dyn FnMut(&[u8]) + Send> {
+pub fn tcp6_cb() -> Box<dyn FnMut(&[u8]) + Send> {
     Box::new(|x| {
         let data = parse_struct_ipv6(x);
 
         let p = Process::new(data.pid);
 
-        let l = TCPLink::new(
+        let mut l = Link::new(
             IpAddr::V6( Ipv6Addr::from(data.saddr.to_be()) ),
             IpAddr::V6( Ipv6Addr::from(data.daddr.to_be()) ),
             data.lport,
             data.dport,
         );
+        l.prot(Prot::TCP);
 
         update_procs_and_links(p, l, data.size as u64, data.is_rx);
     })
 }
 
-fn update_procs_and_links(mut p: Process, mut l: TCPLink, packets_size: u64, is_rx: u32) {
+pub fn udp4_cb() -> Box<dyn FnMut(&[u8]) + Send> {
+    Box::new(|x| {
+        let data = parse_struct_ipv4(x);
+
+        let p = Process::new(data.pid);
+
+        let mut l = Link::new(
+            IpAddr::V4( Ipv4Addr::from(data.saddr.to_be()) ),
+            IpAddr::V4( Ipv4Addr::from(data.daddr.to_be()) ),
+            data.lport,
+            data.dport,
+        );
+        l.prot(Prot::UDP);
+
+        update_procs_and_links(p, l, data.size as u64, data.is_rx);
+    })
+}
+
+pub fn udp6_cb() -> Box<dyn FnMut(&[u8]) + Send> {
+    Box::new(|x| {
+        let data = parse_struct_ipv6(x);
+
+        let p = Process::new(data.pid);
+
+        let mut l = Link::new(
+            IpAddr::V6( Ipv6Addr::from(data.saddr.to_be()) ),
+            IpAddr::V6( Ipv6Addr::from(data.daddr.to_be()) ),
+            data.lport,
+            data.dport,
+        );
+        l.prot(Prot::UDP);
+
+        update_procs_and_links(p, l, data.size as u64, data.is_rx);
+    })
+}
+
+fn update_procs_and_links(mut p: Process, mut l: Link, packets_size: u64, is_rx: u32) {
     let mut procs = PROCESSES.lock().unwrap();
 
     if procs.contains(&p) {
@@ -398,7 +455,7 @@ mod tests {
             size: 567890,
             is_rx: 0,
         };
-        let mut ptr = ipv4_tcp_cb();
+        let mut ptr = tcp4_cb();
 
         ptr( unsafe {any_as_u8_slice(&data0)} );
         ptr( unsafe {any_as_u8_slice(&data1)} );
@@ -422,6 +479,7 @@ mod tests {
         assert_eq!(c.dport, 80, "destination port incorrect");
         assert_eq!(c.rx, 56789, "rx size incorrect");
         assert_eq!(c.tx, 567890, "tx size incorrect");
+        assert_eq!(c.prot, Prot::TCP);
     }
 
     #[test]
@@ -446,7 +504,7 @@ mod tests {
             size: 56789,
             is_rx: 0,
         };
-        let mut ptr = ipv4_tcp_cb();
+        let mut ptr = tcp4_cb();
 
         ptr( unsafe {any_as_u8_slice(&data0)} );
         ptr( unsafe {any_as_u8_slice(&data1)} );
@@ -478,7 +536,7 @@ mod tests {
             size: 567890,
             is_rx: 0,
         };
-        let mut ptr = ipv6_tcp_cb();
+        let mut ptr = tcp6_cb();
 
         ptr( unsafe {any_as_u8_slice(&data0)} );
         ptr( unsafe {any_as_u8_slice(&data1)} );
@@ -501,6 +559,7 @@ mod tests {
         assert_eq!(c.dport, 80, "destination port incorrect");
         assert_eq!(c.rx, 56789, "rx size incorrect");
         assert_eq!(c.tx, 567890, "tx size incorrect");
+        assert_eq!(c.prot, Prot::TCP);
     }
 
     #[test]
@@ -525,7 +584,7 @@ mod tests {
             size: 56789,
             is_rx: 0,
         };
-        let mut ptr = ipv6_tcp_cb();
+        let mut ptr = tcp6_cb();
 
         ptr( unsafe {any_as_u8_slice(&data0)} );
         ptr( unsafe {any_as_u8_slice(&data1)} );

@@ -31,6 +31,8 @@ output0="sekhmet.json"
 output_tcp4="iperf_tcp4.json"
 output_tcp6="iperf_tcp6.json"
 
+estimated_compile_time=15
+
 test_result () {
 	rx_intercepted=$(cat $output0 | jq '.'$1'.rx')
 	tx_intercepted=$(cat $output0 | jq '.'$1'.tx')
@@ -78,7 +80,7 @@ echo "[+] Starting traffic interception..."
 ../target/debug/sekhmet test &
 pid=$(echo $!)
 # Let it compile BPF code
-sleep 5
+sleep $estimated_compile_time
 
 
 #

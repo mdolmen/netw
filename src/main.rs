@@ -39,32 +39,46 @@ fn display(runnable: Arc<AtomicBool>) {
 }
 
 fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
-    let tcp = include_str!("bpf/tcp.c");
+    let filters = include_str!("bpf/filters.c");
 
     println!("[+] Compiling and installing BPF filters...");
 
-    let mut filter = BPF::new(tcp)?;
+    let mut filters = BPF::new(filters)?;
 
+    // TCP probes
     Kprobe::new()
         .handler("kprobe__tcp_sendmsg")
         .function("tcp_sendmsg")
-        .attach(&mut filter)?;
+        .attach(&mut filters)?;
     Kprobe::new()
         .handler("kprobe__tcp_cleanup_rbuf")
         .function("tcp_cleanup_rbuf")
-        .attach(&mut filter)?;
+        .attach(&mut filters)?;
 
+    // UDP probes
+    Kprobe::new()
+        .handler("kprobe__udp_sendmsg")
+        .function("udp_sendmsg")
+        .attach(&mut filters)?;
+    Kprobe::new()
+        .handler("kprobe__udp_recvmsg")
+        .function("udp_recvmsg")
+        .attach(&mut filters)?;
 
-    let ipv4_table = filter.table("ipv4_tcp_data")?;
-    let ipv6_table = filter.table("ipv6_tcp_data")?;
+    let tcp4_table = filters.table("tcp4_data")?;
+    let tcp6_table = filters.table("tcp6_data")?;
+    let udp4_table = filters.table("udp4_data")?;
+    let udp6_table = filters.table("udp6_data")?;
     // TODO: useless var, read the doc
-    let _ipv4_map = filter.init_perf_map(ipv4_table, net::ipv4_tcp_cb)?;
-    let _ipv6_map = filter.init_perf_map(ipv6_table, net::ipv6_tcp_cb)?;
+    let _tcp4_map = filters.init_perf_map(tcp4_table, net::tcp4_cb)?;
+    let _tcp6_map = filters.init_perf_map(tcp6_table, net::tcp6_cb)?;
+    let _udp4_map = filters.init_perf_map(udp4_table, net::udp4_cb)?;
+    let _udp6_map = filters.init_perf_map(udp6_table, net::udp6_cb)?;
 
     println!("[+] All done! Running...");
 
     while runnable.load(Ordering::SeqCst) {
-        filter.perf_map_poll(200);
+        filters.perf_map_poll(200);
     }
 
     Ok(())
