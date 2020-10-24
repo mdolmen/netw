@@ -595,6 +595,167 @@ mod tests {
     }
 
     #[test]
+    fn udp4_cb_one_process_multiple_links() {
+        remove_all_procs();
+
+        let data0 = ipv4_data_t {
+            pid: 1234,
+            saddr: 33663168,    // (little endian) 192.168.1.2
+            daddr: 3361999370,  // (little endian) 10.10.100.200
+            lport: 4321,
+            dport: 80,
+            size: 56789,
+            is_rx: 1,
+        };
+        let data1 = ipv4_data_t {
+            pid: 1234,
+            saddr: 33663168,    // (little endian) 192.168.1.2
+            daddr: 3361999370,  // (little endian) 10.10.100.200
+            lport: 4321,
+            dport: 80,
+            size: 567890,
+            is_rx: 0,
+        };
+        let mut ptr = udp4_cb();
+
+        ptr( unsafe {any_as_u8_slice(&data0)} );
+        ptr( unsafe {any_as_u8_slice(&data1)} );
+
+        let procs = PROCESSES.lock().unwrap();
+
+        assert_eq!(procs.len(), 1, "number of process incorrect");
+
+        let p = procs.iter().next().unwrap();
+        let c = p.tlinks.iter().next().unwrap();
+        let ip_src = IpAddr::V4( Ipv4Addr::new(192, 168, 1, 2) );
+        let ip_dst = IpAddr::V4( Ipv4Addr::new(10, 10, 100, 200) );
+
+        assert_eq!(p.pid, 1234, "pid incorrect");
+        assert_ne!(p.name, "", "process name empty");
+        assert_eq!(p.rx, 56789, "process rx incorrect");
+        assert_eq!(p.tx, 567890, "process tx incorrect");
+        assert_eq!(c.saddr, ip_src, "source ip address incorrect");
+        assert_eq!(c.daddr, ip_dst, "destination ip address incorrect");
+        assert_eq!(c.lport, 4321, "local port incorrect");
+        assert_eq!(c.dport, 80, "destination port incorrect");
+        assert_eq!(c.rx, 56789, "rx size incorrect");
+        assert_eq!(c.tx, 567890, "tx size incorrect");
+        assert_eq!(c.prot, Prot::UDP, "protocol is incorrect");
+    }
+
+    #[test]
+    fn udp4_cb_multiple_process_one_link() {
+        remove_all_procs();
+
+        let data0 = ipv4_data_t {
+            pid: 1234,
+            saddr: 33663168,    // (little endian) 192.168.1.2
+            daddr: 3361999370,  // (little endian) 10.10.100.200
+            lport: 4321,
+            dport: 80,
+            size: 56789,
+            is_rx: 1,
+        };
+        let data1 = ipv4_data_t {
+            pid: 5678,
+            saddr: 33663168,    // (little endian) 192.168.1.2
+            daddr: 3361999370,  // (little endian) 10.10.100.200
+            lport: 4321,
+            dport: 80,
+            size: 56789,
+            is_rx: 0,
+        };
+        let mut ptr = udp4_cb();
+
+        ptr( unsafe {any_as_u8_slice(&data0)} );
+        ptr( unsafe {any_as_u8_slice(&data1)} );
+
+        let procs = PROCESSES.lock().unwrap();
+
+        assert_eq!(procs.len(), 2, "number of process incorrect");
+    }
+
+    #[test]
+    fn udp6_cb_one_process_multiple_links() {
+        remove_all_procs();
+
+        let data0 = ipv6_data_t {
+            pid: 1234,
+            saddr: 267854308077474350974080065079001252094, // (LE) fe80::4c9f:5cff:fedc:82c9
+            daddr: 267854308077474350974080065079001252094, // (LE) fe80::4c9f:5cff:fedc:82c9
+            lport: 4321,
+            dport: 80,
+            size: 56789,
+            is_rx: 1,
+        };
+        let data1 = ipv6_data_t {
+            pid: 1234,
+            saddr: 267854308077474350974080065079001252094, // (LE) fe80::4c9f:5cff:fedc:82c9
+            daddr: 267854308077474350974080065079001252094, // (LE) fe80::4c9f:5cff:fedc:82c9
+            lport: 4321,
+            dport: 80,
+            size: 567890,
+            is_rx: 0,
+        };
+        let mut ptr = udp6_cb();
+
+        ptr( unsafe {any_as_u8_slice(&data0)} );
+        ptr( unsafe {any_as_u8_slice(&data1)} );
+
+        let procs = PROCESSES.lock().unwrap();
+
+        assert_eq!(procs.len(), 1, "number of process incorrect");
+
+        let p = procs.iter().next().unwrap();
+        let c = p.tlinks.iter().next().unwrap();
+        let ip = IpAddr::V6( Ipv6Addr::new(0xfe80, 0, 0, 0, 0x4c9f, 0x5cff, 0xfedc, 0x82c9) );
+
+        assert_eq!(p.pid, 1234, "pid incorrect");
+        assert_ne!(p.name, "", "process name empty");
+        assert_eq!(p.rx, 56789, "process rx incorrect");
+        assert_eq!(p.tx, 567890, "process tx incorrect");
+        assert_eq!(c.saddr, ip, "source ip address incorrect");
+        assert_eq!(c.daddr, ip, "destination ip address incorrect");
+        assert_eq!(c.lport, 4321, "local port incorrect");
+        assert_eq!(c.dport, 80, "destination port incorrect");
+        assert_eq!(c.rx, 56789, "rx size incorrect");
+        assert_eq!(c.tx, 567890, "tx size incorrect");
+        assert_eq!(c.prot, Prot::UDP, "protocol is incorrect");
+    }
+
+    #[test]
+    fn udp6_cb_multiple_process_one_link() {
+        remove_all_procs();
+
+        let data0 = ipv6_data_t {
+            pid: 1234,
+            saddr: 267854308077474350974080065079001252094, // (LE) fe80::4c9f:5cff:fedc:82c9
+            daddr: 267854308077474350974080065079001252094, // (LE) fe80::4c9f:5cff:fedc:82c9
+            lport: 4321,
+            dport: 80,
+            size: 56789,
+            is_rx: 1,
+        };
+        let data1 = ipv6_data_t {
+            pid: 5678,
+            saddr: 267854308077474350974080065079001252094, // (LE) fe80::4c9f:5cff:fedc:82c9
+            daddr: 267854308077474350974080065079001252094, // (LE) fe80::4c9f:5cff:fedc:82c9
+            lport: 4321,
+            dport: 80,
+            size: 56789,
+            is_rx: 0,
+        };
+        let mut ptr = udp6_cb();
+
+        ptr( unsafe {any_as_u8_slice(&data0)} );
+        ptr( unsafe {any_as_u8_slice(&data1)} );
+
+        let procs = PROCESSES.lock().unwrap();
+
+        assert_eq!(procs.len(), 2, "number of process incorrect");
+    }
+
+    #[test]
     fn group_bytes_bytes() {
         let bytes = 123;
 
