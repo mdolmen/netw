@@ -30,10 +30,12 @@ GREEN='\033[0;32m'
 output0="sekhmet.json"
 output_tcp4="iperf_tcp4.json"
 output_tcp6="iperf_tcp6.json"
+output_udp4="iperf_udp4.json"
+output_udp6="iperf_udp6.json"
 
-estimated_compile_time=15
+estimated_compile_time=10
 
-test_result () {
+test_result_tcp() {
 	rx_intercepted=$(cat $output0 | jq '.'$1'.rx')
 	tx_intercepted=$(cat $output0 | jq '.'$1'.tx')
 	rx_iperf=$(cat $2 | jq '.end.sum_received.bytes')
@@ -45,6 +47,29 @@ test_result () {
 		echo -e "[test] ${GREEN}$1 TCP: OK${NC}"
 	else
 		echo -e "[test] ${RED}$1 TCP: iperf3 traffic != traffic intercepted${NC}"
+		echo "rx_intercepted: $rx_intercepted"
+		echo "rx_iperf: $rx_iperf"
+		echo "tx_intercepted: $tx_intercepted"
+		echo "tx_iperf: $tx_iperf"
+	fi
+}
+
+test_result_udp() {
+	rx_intercepted=$(cat $output0 | jq '.'$1'.rx')
+	tx_intercepted=$(cat $output0 | jq '.'$1'.tx')
+	tx_iperf=$(cat $2 | jq '.end.sum.bytes')
+	lost=$(cat $2 | jq '.end.sum.lost_packets')
+	packets=$(cat $2 | jq '.end.sum.packets')
+	rx_iperf=$(echo "$tx_iperf - ($tx_iperf / $packets * $lost)" | bc)
+	echo $lost
+	echo $packets
+
+	# cf. comments in src/net/mod.rs:log_iperf_to_file() for why +4
+	if (( $rx_intercepted == $rx_iperf )) && (( $tx_intercepted == $tx_iperf+4 ))
+	then
+		echo -e "[test] ${GREEN}$1 UDP: OK${NC}"
+	else
+		echo -e "[test] ${RED}$1 UDP: iperf3 traffic != traffic intercepted${NC}"
 		echo "rx_intercepted: $rx_intercepted"
 		echo "rx_iperf: $rx_iperf"
 		echo "tx_intercepted: $tx_intercepted"
@@ -83,33 +108,50 @@ pid=$(echo $!)
 sleep $estimated_compile_time
 
 
+##
+## TCP4
+##
+#echo "[+] Simulating TCP4 traffic..."
+#ip netns exec $ns iperf3 -s -B 10.0.10.100 -p 5201 -1 &> /dev/null &
+#sleep 1
+#ip netns exec $ns iperf3 -4 -c 10.0.10.100 -p 5201 -n 500M -J > $output_tcp4
+#sleep 5
 #
-# IPV4 TCP
-#
-echo "[+] Simulating ipv4 TCP traffic..."
-ip netns exec $ns iperf3 -s -B 10.0.10.100 -p 5201 -1 &> /dev/null &
-sleep 2
-ip netns exec $ns iperf3 -4 -c 10.0.10.100 -p 5201 -n 500M -J > $output_tcp4
-sleep 5
+##
+## TCP6
+##
+#echo "[+] Simulating TCP6 traffic..."
+#ip netns exec $ns iperf3 -s -B $v0_ip6'%'$v0 -p 5201 -1 &> /dev/null &
+#sleep 1
+#ip netns exec $ns iperf3 -6 -c $v0_ip6'%'$v0 -p 5201 -n 500M -J > $output_tcp6
+#sleep 5
 
-# TODO: IPV4 UDP
+for i in {0..10}; do
+	# UDP4
+	echo "[+] Simulating UDP4 traffic..."
+	ip netns exec $ns iperf3 -s -B 10.0.10.100 -p 5201 -1 &> /dev/null &
+	sleep 1
+	ip netns exec $ns iperf3 -4 -c 10.0.10.100 -p 5201 -n 5M -u -J > $output_udp4
+	sleep 5
 
-#
-# IPV6 TCP
-#
-echo "[+] Simulating ipv6 TCP traffic..."
-ip netns exec $ns iperf3 -s -B $v0_ip6'%'$v0 -p 5201 -1 &> /dev/null &
-sleep 2
-ip netns exec $ns iperf3 -6 -c $v0_ip6'%'$v0 -p 5201 -n 500M -J > $output_tcp6
-sleep 5
+	test_result_udp "udp4" $output_udp4
+done
 
-# TODO: IPV6 UDP
+# UDP6
+#echo "[+] Simulating UDP6 traffic..."
+#ip netns exec $ns iperf3 -s -B $v0_ip6'%'$v0 -p 5201 -1 &> /dev/null &
+#sleep 1
+#ip netns exec $ns iperf3 -6 -c $v0_ip6'%'$v0 -p 5201 -n 500M -u -b 2000M -J > $output_udp6
+#sleep 5
 
 kill -s SIGINT $pid
 sleep 3
+exit 1
 
-test_result "ipv4" $output_tcp4
-test_result "ipv6" $output_tcp6
+#test_result_tcp "tcp4" $output_tcp4
+#test_result_tcp "tcp6" $output_tcp6
+test_result_udp "udp4" $output_udp4
+#test_result_udp "udp6" $output_udp6
 
 #
 # Clean up

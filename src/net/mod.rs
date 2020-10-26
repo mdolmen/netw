@@ -27,10 +27,8 @@ pub struct Process {
     pid: u32,
     name: String,
     //command: String,
-    // TODO: vec v4 + vec v6?
     tlinks: Vec<Link>,
-    //nb_tlinks: u32,
-    // TODO: Vec for UDP
+    ulinks: Vec<Link>,
     rx: u64,
     tx: u64,
     //status: u8, // TODO: enum
@@ -42,6 +40,7 @@ impl Process {
             pid: pid,
             name: String::new(),
             tlinks: Vec::new(),
+            ulinks: Vec::new(),
             rx: 0,
             tx: 0,
         }
@@ -49,6 +48,10 @@ impl Process {
 
     fn get_tlinks(&self) -> &Vec<Link> {
         &self.tlinks
+    }
+
+    fn get_ulinks(&self) -> &Vec<Link> {
+        &self.ulinks
     }
 
     fn add_data(&mut self, size: u64, is_rx: u32) {
@@ -64,8 +67,14 @@ impl Process {
         self
     }
 
-    pub fn print_links(&self) {
+    pub fn print_tlinks(&self) {
         for l in self.tlinks.iter() {
+            println!("{}", l);
+        }
+    }
+
+    pub fn print_ulinks(&self) {
+        for l in self.ulinks.iter() {
             println!("{}", l);
         }
     }
@@ -116,8 +125,6 @@ struct Link {
     tx: u64,
     prot: Prot,
 }
-
-// TODO: struct for UPD and its implem
 
 impl Link {
     fn new(saddr: IpAddr, daddr: IpAddr, lport: u16, dport: u16) -> Link {
@@ -230,7 +237,7 @@ pub fn tcp4_cb() -> Box<dyn FnMut(&[u8]) + Send> {
         );
         l.prot(Prot::TCP);
 
-        update_procs_and_links(p, l, data.size as u64, data.is_rx);
+        update_procs_and_links(p, l, data.size as u64, data.is_rx, Prot::TCP);
     })
 }
 
@@ -248,7 +255,7 @@ pub fn tcp6_cb() -> Box<dyn FnMut(&[u8]) + Send> {
         );
         l.prot(Prot::TCP);
 
-        update_procs_and_links(p, l, data.size as u64, data.is_rx);
+        update_procs_and_links(p, l, data.size as u64, data.is_rx, Prot::TCP);
     })
 }
 
@@ -266,7 +273,7 @@ pub fn udp4_cb() -> Box<dyn FnMut(&[u8]) + Send> {
         );
         l.prot(Prot::UDP);
 
-        update_procs_and_links(p, l, data.size as u64, data.is_rx);
+        update_procs_and_links(p, l, data.size as u64, data.is_rx, Prot::UDP);
     })
 }
 
@@ -284,11 +291,15 @@ pub fn udp6_cb() -> Box<dyn FnMut(&[u8]) + Send> {
         );
         l.prot(Prot::UDP);
 
-        update_procs_and_links(p, l, data.size as u64, data.is_rx);
+        update_procs_and_links(p, l, data.size as u64, data.is_rx, Prot::UDP);
     })
 }
 
-fn update_procs_and_links(mut p: Process, mut l: Link, packets_size: u64, is_rx: u32) {
+fn update_procs_and_links(
+    mut p: Process, mut l: Link, packets_size: u64,
+    is_rx: u32, prot: Prot
+)
+{
     let mut procs = PROCESSES.lock().unwrap();
 
     if procs.contains(&p) {
@@ -296,13 +307,15 @@ fn update_procs_and_links(mut p: Process, mut l: Link, packets_size: u64, is_rx:
 
         known_p.add_data(packets_size, is_rx);
 
-        if known_p.tlinks.contains(&l) {
-            let known_link = known_p.tlinks.iter_mut().find(|x| **x == l).unwrap();
+        let links = if prot == Prot::TCP { &mut known_p.tlinks } else { &mut known_p.ulinks };
+
+        if links.contains(&l) {
+            let known_link = links.iter_mut().find(|x| **x == l).unwrap();
 
             known_link.add_data(packets_size, is_rx);
         } else {
             l.add_data(packets_size, is_rx);
-            known_p.tlinks.push(l);
+            links.push(l);
         }
     } else {
         let path_comm = format!("/proc/{}/comm", p.pid);
@@ -321,9 +334,13 @@ fn update_procs_and_links(mut p: Process, mut l: Link, packets_size: u64, is_rx:
         //};
 
         p.name(name);
-        l.add_data(packets_size, is_rx);
         p.add_data(packets_size, is_rx);
-        p.tlinks.push(l);
+
+        let links = if prot == Prot::TCP { &mut p.tlinks } else { &mut p.ulinks };
+
+        l.add_data(packets_size, is_rx);
+
+        links.push(l);
         procs.push(p);
     }
 }
@@ -356,14 +373,13 @@ fn group_bytes(bytes: u64) -> (f64, DataUnit) {
 /*
  * Output only a limited amount information for testing purposes.
  *
- * Typical traffic interception for iperf:
- *
- * iperf3 (221251):
- *        10.0.10.100:5201 <-> 10.0.10.200:49289 RX: 411 TX: 299
- *        10.0.10.100:5201 <-> 10.0.10.200:47159 RX: 5368709120 TX: 0
- * iperf3 (222684):
- *        10.0.10.200:49289 <-> 10.0.10.100:5201 RX: 299 TX: 411
- *        10.0.10.200:47159 <-> 10.0.10.100:5201 RX: 0 TX: 5368709120
+ * Typical TCP traffic interception (Sekhmet output) for iperf:
+ *     iperf3 (221251):
+ *            10.0.10.100:5201 <-> 10.0.10.200:49289 RX: 411 TX: 299
+ *            10.0.10.100:5201 <-> 10.0.10.200:47159 RX: 5368709120 TX: 0
+ *     iperf3 (222684):
+ *            10.0.10.200:49289 <-> 10.0.10.100:5201 RX: 299 TX: 411
+ *            10.0.10.200:47159 <-> 10.0.10.100:5201 RX: 0 TX: 5368709120
  *
  * We care only about the link with a lot of data and either TX or RX at 0. The other corresponds
  * to the setup of the communication between client/server. We want to be sure that we intercept
@@ -372,31 +388,60 @@ fn group_bytes(bytes: u64) -> (f64, DataUnit) {
  * based on observations => hardcoded in the testing script, works for now...). Note that RX may be
  * different than TX due to packet drops (normal behavior).
  *
+ * For UDP:
+ *     iperf3 (314305) RX:303.00B TX:500.00MB:
+ *           UDP 10.0.10.100:57922 <-> 10.0.10.100:5201 RX: 4.00B TX: 500.00MB
+ *     iperf3 (314133) RX:498.78MB TX:303.00B:
+ *           UDP 10.0.10.100:5201 <-> 0.0.0.0:0 RX: 4.00B TX: 0.00B
+ *           UDP 10.0.10.100:5201 <-> 10.0.10.100:57922 RX: 498.78MB TX: 4.00B
+ *
  */
 pub fn log_iperf_to_file() -> std::io::Result<()> {
     let procs = PROCESSES.lock().unwrap();
-    let mut rx4 = 0;
-    let mut tx4 = 0;
-    let mut rx6 = 0;
-    let mut tx6 = 0;
+    let mut tcp4_rx = 0;
+    let mut tcp4_tx = 0;
+    let mut tcp6_rx = 0;
+    let mut tcp6_tx = 0;
+    let mut udp4_rx = 0;
+    let mut udp4_tx = 0;
+    let mut udp6_rx = 0;
+    let mut udp6_tx = 0;
 
     for p in procs.iter() {
         if p.name == String::from("iperf3") {
+            // TCP
             for l in p.get_tlinks() {
                 if l.rx == 0 {
                     println!("{}", l);
-                    if l.saddr.is_ipv4() { tx4 = l.tx; } else { tx6 = l.tx }
+                    if l.saddr.is_ipv4() { tcp4_tx = l.tx; } else { tcp6_tx = l.tx }
                 } else if l.tx == 0 {
                     println!("{}", l);
-                    if l.saddr.is_ipv4() { rx4 = l.rx; } else { rx6 = l.rx }
+                    if l.saddr.is_ipv4() { tcp4_rx = l.rx; } else { tcp6_rx = l.rx }
+                }
+            }
+
+            // UDP
+            for l in p.get_ulinks() {
+                if l.rx == 4 && !l.daddr.is_unspecified() {
+                    println!("{}", l);
+                    if l.saddr.is_ipv4() { udp4_tx = l.tx; } else { udp6_tx = l.tx }
+                } else if l.tx == 4 && !l.daddr.is_unspecified() {
+                    println!("{}", l);
+                    if l.saddr.is_ipv4() { udp4_rx = l.rx; } else { udp6_rx = l.rx }
                 }
             }
         }
     }
 
     let output = format!(
-        "{{ \"ipv4\": {{ \"rx\": {}, \"tx\": {} }}, \"ipv6\": {{ \"rx\": {}, \"tx\": {} }} }}",
-        rx4, tx4, rx6, tx6
+        "{{
+            \"tcp4\": {{ \"rx\": {}, \"tx\": {} }},
+            \"tcp6\": {{ \"rx\": {}, \"tx\": {} }},
+            \"udp4\": {{ \"rx\": {}, \"tx\": {} }},
+            \"udp6\": {{ \"rx\": {}, \"tx\": {} }}
+        }}",
+        tcp4_rx, tcp4_tx, tcp6_rx, tcp6_tx,
+        udp4_rx, udp4_tx, udp6_rx, udp6_tx
     );
 
     let mut file = File::create("sekhmet.json")?;
@@ -626,7 +671,7 @@ mod tests {
         assert_eq!(procs.len(), 1, "number of process incorrect");
 
         let p = procs.iter().next().unwrap();
-        let c = p.tlinks.iter().next().unwrap();
+        let c = p.ulinks.iter().next().unwrap();
         let ip_src = IpAddr::V4( Ipv4Addr::new(192, 168, 1, 2) );
         let ip_dst = IpAddr::V4( Ipv4Addr::new(10, 10, 100, 200) );
 
@@ -707,7 +752,7 @@ mod tests {
         assert_eq!(procs.len(), 1, "number of process incorrect");
 
         let p = procs.iter().next().unwrap();
-        let c = p.tlinks.iter().next().unwrap();
+        let c = p.ulinks.iter().next().unwrap();
         let ip = IpAddr::V6( Ipv6Addr::new(0xfe80, 0, 0, 0, 0x4c9f, 0x5cff, 0xfedc, 0x82c9) );
 
         assert_eq!(p.pid, 1234, "pid incorrect");

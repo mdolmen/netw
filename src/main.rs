@@ -33,7 +33,8 @@ fn display(runnable: Arc<AtomicBool>) {
         for p in procs.iter() {
             println!("{}", p);
 
-            p.print_links();
+            p.print_tlinks();
+            p.print_ulinks();
         }
     }
 }
@@ -63,6 +64,14 @@ fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
     Kprobe::new()
         .handler("kprobe__udp_recvmsg")
         .function("udp_recvmsg")
+        .attach(&mut filters)?;
+    Kprobe::new()
+        .handler("kprobe__udpv6_sendmsg")
+        .function("udpv6_sendmsg")
+        .attach(&mut filters)?;
+    Kprobe::new()
+        .handler("kprobe__udpv6_recvmsg")
+        .function("udpv6_recvmsg")
         .attach(&mut filters)?;
 
     let tcp4_table = filters.table("tcp4_data")?;
