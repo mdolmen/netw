@@ -1,3 +1,5 @@
+#![feature(ip)]
+
 use bcc::{BPF, Kprobe, BccError};
 
 use std::{thread, time, env};
@@ -8,9 +10,11 @@ use lazy_static::lazy_static;
 use ctrlc;
 
 #[macro_use]
-extern crate num_derive;
+extern crate num_derive; // FromPrimitive()
+extern crate libc;
 
 mod net;
+mod dns;
 
 enum ExitCode {
     Success,

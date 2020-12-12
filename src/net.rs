@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::prelude::*;
 
 use crate::PROCESSES;
+use crate::dns::reverse_lookup;
 
 extern crate num;
 
@@ -124,6 +125,7 @@ struct Link {
     rx: u64,
     tx: u64,
     prot: Prot,
+    domain: String,
 }
 
 impl Link {
@@ -136,6 +138,7 @@ impl Link {
             rx: 0,
             tx: 0,
             prot: Prot::NONE,
+            domain: String::new(),
         }
     }
 
@@ -149,6 +152,11 @@ impl Link {
 
     fn prot(&mut self, prot: Prot) -> &mut Self {
         self.prot = prot;
+        self
+    }
+
+    fn domain(&mut self, name: String) -> &mut Self {
+        self.domain = name;
         self
     }
 }
@@ -169,11 +177,46 @@ impl fmt::Display for Link {
         let (rx, rx_unit) = group_bytes(self.rx);
         let (tx, tx_unit) = group_bytes(self.tx);
 
+        //write!(
+        //    f, "\t{p} {}:{} <-> {}:{} RX: {:.2}{u0} TX: {:.2}{u1}",
+        //    self.saddr,
+        //    self.lport,
+        //    self.daddr,
+        //    self.dport,
+        //    rx,
+        //    tx,
+        //    u0 = match rx_unit {
+        //        DataUnit::Bytes => "B",
+        //        DataUnit::KBytes => "KB",
+        //        DataUnit::MBytes => "MB",
+        //        DataUnit::GBytes => "GB",
+        //        DataUnit::TBytes => "TB",
+        //    },
+        //    u1 = match tx_unit {
+        //        DataUnit::Bytes => "B",
+        //        DataUnit::KBytes => "KB",
+        //        DataUnit::MBytes => "MB",
+        //        DataUnit::GBytes => "GB",
+        //        DataUnit::TBytes => "TB",
+        //    },
+        //    p = match self.prot {
+        //        Prot::NONE => "NONE",
+        //        Prot::TCP => "TCP",
+        //        Prot::UDP => "UDP",
+        //    }
+        //)
+
+        let destination = if self.domain.is_empty() {
+            self.daddr.to_string().to_owned()
+        } else {
+            self.domain.to_owned()
+        };
+
         write!(
             f, "\t{p} {}:{} <-> {}:{} RX: {:.2}{u0} TX: {:.2}{u1}",
             self.saddr,
             self.lport,
-            self.daddr,
+            destination,//self.domain,
             self.dport,
             rx,
             tx,
@@ -295,6 +338,9 @@ pub fn udp6_cb() -> Box<dyn FnMut(&[u8]) + Send> {
     })
 }
 
+///
+/// Record the current network connection.
+///
 fn update_procs_and_links(
     mut p: Process, mut l: Link, packets_size: u64,
     is_rx: u32, prot: Prot
@@ -303,6 +349,9 @@ fn update_procs_and_links(
     let mut procs = PROCESSES.lock().unwrap();
 
     if procs.contains(&p) {
+        /*
+         * We have already seen this process having network connection open.
+         */
         let known_p = procs.iter_mut().find(|x| x.pid == p.pid).unwrap();
 
         known_p.add_data(packets_size, is_rx);
@@ -314,10 +363,20 @@ fn update_procs_and_links(
 
             known_link.add_data(packets_size, is_rx);
         } else {
+
+            if l.daddr.is_global() {
+                let (host, _service) = reverse_lookup(l.daddr, l.dport);
+                l.domain(host);
+            }
+
             l.add_data(packets_size, is_rx);
+
             links.push(l);
         }
     } else {
+        /*
+         * First time we see this process communicating over the network.
+         */
         let path_comm = format!("/proc/{}/comm", p.pid);
         let content_comm = fs::read_to_string(path_comm);
         //let path_cmdline = format!("/proc/{}/cmdline", data.pid);
@@ -333,12 +392,17 @@ fn update_procs_and_links(
         //    Err(error) => String::from("file not found"),
         //};
 
+        if l.daddr.is_global() {
+            let (host, _service) = reverse_lookup(l.daddr, l.dport);
+            l.domain(host);
+        }
+
         p.name(name);
         p.add_data(packets_size, is_rx);
 
-        let links = if prot == Prot::TCP { &mut p.tlinks } else { &mut p.ulinks };
-
         l.add_data(packets_size, is_rx);
+
+        let links = if prot == Prot::TCP { &mut p.tlinks } else { &mut p.ulinks };
 
         links.push(l);
         procs.push(p);
