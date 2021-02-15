@@ -2,7 +2,7 @@
 
 use bcc::{BPF, Kprobe, BccError};
 
-use std::{thread, time, env};
+use std::{thread, time, env, error::Error, io, time::Duration};
 use std::sync::{Arc, Mutex};
 
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -15,6 +15,18 @@ extern crate libc;
 
 mod net;
 mod dns;
+
+/*
+ * For tui
+ */
+mod ui;
+#[allow(dead_code)]
+mod util;
+
+use ui::App;
+use util::event::{Config, Event, Events};
+use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
+use tui::{backend::TermionBackend, Terminal};
 
 enum ExitCode {
     Success,
@@ -41,6 +53,48 @@ fn display(runnable: Arc<AtomicBool>) {
             p.print_ulinks();
         }
     }
+}
+
+fn tui() -> Result<(), Box<dyn Error>> {
+    let tick_rate = 500;
+    let enhanced_graphics = true;
+
+    let events = Events::with_config(Config {
+        tick_rate: Duration::from_millis(tick_rate),
+        ..Config::default()
+    });
+
+    let stdout = io::stdout().into_raw_mode()?;
+    let stdout = MouseTerminal::from(stdout);
+    let stdout = AlternateScreen::from(stdout);
+    let backend = TermionBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    let mut app = App::new(" Sekhmet ", enhanced_graphics);
+
+    loop {
+        terminal.draw(|f| ui::draw(f, &mut app))?;
+
+        match events.next()? {
+            Event::Input(key) => match key {
+                Key::Char(c)  => {  app.on_key(c);   }
+                Key::Up       => {  app.on_up();     }
+                Key::Down     => {  app.on_down();   }
+                Key::Left     => {  app.on_left();   }
+                Key::Right    => {  app.on_right();  }
+                _ => {}
+            },
+            Event::Tick => {
+                app.on_tick();
+            }
+        }
+
+        if app.should_quit {
+            break;
+        }
+    }
+
+    Ok(())
 }
 
 fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
@@ -121,7 +175,8 @@ fn main() {
 
     if !test {
         thread::spawn(move || {
-            display(arc_display);
+            //display(arc_display);
+            tui();
         });
     }
 

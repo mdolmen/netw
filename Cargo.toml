@@ -7,11 +7,13 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bcc = "0.0.30"
-ctrlc = "3.1.6"
-clap = "2.33.3"
-libc = "0.2.80"
-socket2 = "0.3"
+bcc      =  "0.0.30"
+ctrlc    =  "3.1.6"
+clap     =  "2.33.3"
+libc     =  "0.2.80"
+socket2  =  "0.3"
+tui      =  "0.14"
+termion  =  "1.5"
 
 # To cast an int to its enum equivalent
 num = "0.3"
