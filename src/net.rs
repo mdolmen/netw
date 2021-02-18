@@ -17,16 +17,17 @@ pub enum DataUnit {
     TBytes,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Prot {
     NONE,
     TCP,
     UDP,
 }
 
+#[derive(Clone)]
 pub struct Process {
     pid: u32,
-    name: String,
+    pub name: String,
     //command: String,
     tlinks: Vec<Link>,
     ulinks: Vec<Link>,
@@ -117,6 +118,7 @@ impl fmt::Display for Process {
     }
 }
 
+#[derive(Clone)]
 struct Link {
     saddr: IpAddr,
     daddr: IpAddr,

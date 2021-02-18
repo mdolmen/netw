@@ -12,20 +12,15 @@ use tui::{
     },
     Frame,
 };
-
-const TASKS: [&str; 24] = [
-    "Item1", "Item2", "Item3", "Item4", "Item5", "Item6", "Item7", "Item8", "Item9", "Item10",
-    "Item11", "Item12", "Item13", "Item14", "Item15", "Item16", "Item17", "Item18", "Item19",
-    "Item20", "Item21", "Item22", "Item23", "Item24",
-];
+use crate::PROCESSES;
+use crate::net::Process;
 
 pub struct App<'a> {
     pub title: &'a str,
     pub should_quit: bool,
     pub tabs: TabsState<'a>,
     pub show_chart: bool,
-    pub progress: f64,
-    pub tasks: StatefulList<&'a str>,
+    pub procs: StatefulList<Process>,
     pub enhanced_graphics: bool,
 }
 
@@ -36,18 +31,17 @@ impl<'a> App<'a> {
             should_quit: false,
             tabs: TabsState::new(vec!["Tab0", "Tab1", "Tab2"]),
             show_chart: true,
-            progress: 0.0,
-            tasks: StatefulList::with_items(TASKS.to_vec()),
+            procs: StatefulList::with_items(PROCESSES.lock().unwrap().to_vec()),
             enhanced_graphics,
         }
     }
 
     pub fn on_up(&mut self) {
-        self.tasks.previous();
+        self.procs.previous();
     }
 
     pub fn on_down(&mut self) {
-        self.tasks.next();
+        self.procs.next();
     }
 
     pub fn on_right(&mut self) {
@@ -71,37 +65,11 @@ impl<'a> App<'a> {
     }
 
     pub fn on_tick(&mut self) {
-        // Update progress
-        self.progress += 0.001;
-        if self.progress > 1.0 {
-            self.progress = 0.0;
-        }
+        self.procs = StatefulList::with_items(PROCESSES.lock().unwrap().to_vec());
     }
 }
 
 pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
-    /*
-     * Create widgets to be displayed.
-     */
-    let titles = app
-        .tabs
-        .titles
-        .iter()
-        .map(|t| Spans::from(Span::styled(*t, Style::default().fg(Color::Green))))
-        .collect();
-    let tabs = Tabs::new(titles)
-        .block(Block::default().borders(Borders::ALL).title(app.title))
-        .highlight_style(Style::default().fg(Color::Yellow))
-        .select(app.tabs.index);
-
-    let block0 = Block::default()
-         .title(" Processes ")
-         .borders(Borders::ALL);
-
-    let block1 = Block::default()
-         .title(" Summary ")
-         .borders(Borders::ALL);
-
     /*
      * Create the layout: split the screen in 3 blocks.
      */
@@ -117,7 +85,43 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         )
         .split(f.size());
 
+    /*
+     * Draw tabs.
+     */
+    let titles = app
+        .tabs
+        .titles
+        .iter()
+        .map(|t| Spans::from(Span::styled(*t, Style::default().fg(Color::Green))))
+        .collect();
+
+    // TODO: get interfaces
+    let tabs = Tabs::new(titles)
+        .block(Block::default().borders(Borders::ALL).title(app.title))
+        .highlight_style(Style::default().fg(Color::Yellow))
+        .select(app.tabs.index);
     f.render_widget(tabs, zones[0]);
-    f.render_widget(block0, zones[1]);
-    f.render_widget(block1, zones[2]);
+
+    /*
+     * Draw process list.
+     */
+    let procs: Vec<ListItem> = app
+        .procs
+        .items
+        .iter()
+        .map(|i| ListItem::new(Span::raw(&i.name)))
+        .collect();
+    let procs = List::new(procs)
+        .block(Block::default().borders(Borders::ALL).title(" Processes "))
+        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+        .highlight_symbol("> ");
+    f.render_stateful_widget(procs, zones[1], &mut app.procs.state);
+
+    /*
+     * Draw the summary.
+     */
+    let summary = Block::default()
+         .title(" Summary ")
+         .borders(Borders::ALL);
+    f.render_widget(summary, zones[2]);
 }
