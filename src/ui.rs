@@ -12,15 +12,16 @@ use tui::{
     },
     Frame,
 };
-use crate::PROCESSES;
+use crate::{PROCESSES, LOGS};
 use crate::net::Process;
 
 pub struct App<'a> {
     pub title: &'a str,
     pub should_quit: bool,
     pub tabs: TabsState<'a>,
-    pub show_chart: bool,
+    pub show_logs: bool,
     pub procs: StatefulList<Process>,
+    pub logs: StatefulList<String>,
     pub enhanced_graphics: bool,
 }
 
@@ -30,8 +31,9 @@ impl<'a> App<'a> {
             title,
             should_quit: false,
             tabs: TabsState::new(vec!["Tab0", "Tab1", "Tab2"]),
-            show_chart: true,
+            show_logs: true,
             procs: StatefulList::with_items(PROCESSES.lock().unwrap().to_vec()),
+            logs: StatefulList::with_items(LOGS.lock().unwrap().to_vec()),
             enhanced_graphics,
         }
     }
@@ -57,8 +59,8 @@ impl<'a> App<'a> {
             'q' => {
                 self.should_quit = true;
             }
-            't' => {
-                self.show_chart = !self.show_chart;
+            'l' => {
+                self.show_logs = !self.show_logs;
             }
             _ => {}
         }
@@ -66,12 +68,13 @@ impl<'a> App<'a> {
 
     pub fn on_tick(&mut self) {
         self.procs = StatefulList::with_items(PROCESSES.lock().unwrap().to_vec());
+        self.logs = StatefulList::with_items(LOGS.lock().unwrap().to_vec());
     }
 }
 
 pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     /*
-     * Create the layout: split the screen in 3 blocks.
+     * Create the main layout: split the screen in 3 blocks.
      */
     let zones = Layout::default()
         .direction(Direction::Vertical)
@@ -103,6 +106,20 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     f.render_widget(tabs, zones[0]);
 
     /*
+     * Create the layout for the central zone. Either one big window or 2 horizontal ones if the
+     * user wants to show the logs.
+     */
+    let constraints = if app.show_logs {
+        vec![Constraint::Percentage(65), Constraint::Percentage(35)]
+    } else {
+        vec![Constraint::Percentage(100)]
+    };
+    let central_zones = Layout::default()
+        .constraints(constraints)
+        .direction(Direction::Horizontal)
+        .split(zones[1]);
+
+    /*
      * Draw process list.
      */
     let procs: Vec<ListItem> = app
@@ -111,11 +128,32 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .iter()
         .map(|i| ListItem::new(Span::raw(&i.name)))
         .collect();
+
     let procs = List::new(procs)
         .block(Block::default().borders(Borders::ALL).title(" Processes "))
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol("> ");
-    f.render_stateful_widget(procs, zones[1], &mut app.procs.state);
+
+    f.render_stateful_widget(procs, central_zones[0], &mut app.procs.state);
+
+    /*
+     * Draw logs.
+     */
+    if app.show_logs {
+        let logs: Vec<ListItem> = app
+            .logs
+            .items
+            .iter()
+            .map(|i| ListItem::new(Span::raw(i)))
+            .collect();
+
+        let logs = List::new(logs)
+            .block(Block::default().borders(Borders::ALL).title(" Logs "))
+            .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+            .highlight_symbol("> ");
+
+        f.render_widget(logs, central_zones[1]);
+    }
 
     /*
      * Draw the summary.

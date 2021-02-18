@@ -4,6 +4,7 @@ use bcc::{BPF, Kprobe, BccError};
 
 use std::{thread, time, env, error::Error, io, time::Duration};
 use std::sync::{Arc, Mutex};
+use std::mem::drop;
 
 use core::sync::atomic::{AtomicBool, Ordering};
 use lazy_static::lazy_static;
@@ -35,6 +36,9 @@ enum ExitCode {
 
 lazy_static! {
     static ref PROCESSES: Mutex<Vec<net::Process>> = Mutex::new(Vec::new());
+}
+lazy_static! {
+    static ref LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 }
 
 fn display(runnable: Arc<AtomicBool>) {
@@ -100,7 +104,9 @@ fn tui() -> Result<(), Box<dyn Error>> {
 fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
     let filters = include_str!("bpf/filters.c");
 
-    println!("[+] Compiling and installing BPF filters...");
+    let mut logs = LOGS.lock().unwrap();
+    logs.push(String::from("[+] Compiling and installing BPF filters..."));
+    drop(logs);
 
     let mut filters = BPF::new(filters)?;
 
@@ -142,7 +148,9 @@ fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
     let _udp4_map = filters.init_perf_map(udp4_table, net::udp4_cb)?;
     let _udp6_map = filters.init_perf_map(udp6_table, net::udp6_cb)?;
 
-    println!("[+] All done! Running...");
+    let mut logs = LOGS.lock().unwrap();
+    logs.push(String::from("[+] All done! Running..."));
+    drop(logs);
 
     while runnable.load(Ordering::SeqCst) {
         filters.perf_map_poll(200);
