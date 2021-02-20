@@ -41,6 +41,14 @@ lazy_static! {
     static ref LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 }
 
+macro_rules! log {
+    ($x:expr) => {
+        let mut tmp = LOGS.lock().unwrap();
+        tmp.push($x);
+        drop(tmp);
+    };
+}
+
 fn display(runnable: Arc<AtomicBool>) {
     while runnable.load(Ordering::SeqCst) {
         thread::sleep(time::Duration::new(1, 0));
@@ -105,9 +113,7 @@ fn tui(runnable: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
 fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
     let filters = include_str!("bpf/filters.c");
 
-    let mut logs = LOGS.lock().unwrap();
-    logs.push(String::from("[+] Compiling and installing BPF filters..."));
-    drop(logs);
+    log!(String::from("[+] Compiling and installing BPF filters..."));
 
     let mut filters = BPF::new(filters)?;
 
@@ -149,9 +155,7 @@ fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
     let _udp4_map = filters.init_perf_map(udp4_table, net::udp4_cb)?;
     let _udp6_map = filters.init_perf_map(udp6_table, net::udp6_cb)?;
 
-    let mut logs = LOGS.lock().unwrap();
-    logs.push(String::from("[+] All done! Running..."));
-    drop(logs);
+    log!(String::from("[+] All done! Running..."));
 
     while runnable.load(Ordering::SeqCst) {
         filters.perf_map_poll(200);
