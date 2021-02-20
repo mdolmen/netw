@@ -59,7 +59,7 @@ fn display(runnable: Arc<AtomicBool>) {
     }
 }
 
-fn tui() -> Result<(), Box<dyn Error>> {
+fn tui(runnable: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     let tick_rate = 500;
     let enhanced_graphics = true;
 
@@ -94,6 +94,7 @@ fn tui() -> Result<(), Box<dyn Error>> {
         }
 
         if app.should_quit {
+            runnable.store(false, Ordering::SeqCst);
             break;
         }
     }
@@ -173,6 +174,7 @@ fn main() {
         println!("[debug] test mode");
     }
 
+    // TODO: useless with TUI
     ctrlc::set_handler(move || {
         arc_main.store(false, Ordering::SeqCst);
         if test {
@@ -184,7 +186,7 @@ fn main() {
     if !test {
         thread::spawn(move || {
             //display(arc_display);
-            tui();
+            tui(arc_display);
         });
     }
 

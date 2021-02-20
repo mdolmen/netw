@@ -20,8 +20,10 @@ pub struct App<'a> {
     pub should_quit: bool,
     pub tabs: TabsState<'a>,
     pub show_logs: bool,
+    pub show_help: bool,
     pub procs: StatefulList<Process>,
     pub logs: StatefulList<String>,
+    pub help: StatefulList<String>,
     pub enhanced_graphics: bool,
 }
 
@@ -32,8 +34,14 @@ impl<'a> App<'a> {
             should_quit: false,
             tabs: TabsState::new(vec!["Tab0", "Tab1", "Tab2"]),
             show_logs: true,
+            show_help: false,
             procs: StatefulList::with_items(PROCESSES.lock().unwrap().to_vec()),
             logs: StatefulList::with_items(LOGS.lock().unwrap().to_vec()),
+            help: StatefulList::with_items(vec![
+                String::from("h: display/hide help"),
+                String::from("l: display/hide logs"),
+                String::from("q: quit"),
+            ]),
             enhanced_graphics,
         }
     }
@@ -61,6 +69,9 @@ impl<'a> App<'a> {
             }
             'l' => {
                 self.show_logs = !self.show_logs;
+            }
+            'h' => {
+                self.show_help = !self.show_help;
             }
             _ => {}
         }
@@ -109,7 +120,7 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
      * Create the layout for the central zone. Either one big window or 2 horizontal ones if the
      * user wants to show the logs.
      */
-    let constraints = if app.show_logs {
+    let constraints = if app.show_logs || app.show_help {
         vec![Constraint::Percentage(65), Constraint::Percentage(35)]
     } else {
         vec![Constraint::Percentage(100)]
@@ -137,22 +148,56 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     f.render_stateful_widget(procs, central_zones[0], &mut app.procs.state);
 
     /*
-     * Draw logs.
+     * Create the optional central right block layout.
      */
-    if app.show_logs {
-        let logs: Vec<ListItem> = app
-            .logs
-            .items
-            .iter()
-            .map(|i| ListItem::new(Span::raw(i)))
-            .collect();
+    if app.show_logs || app.show_help {
+        let constraints = if app.show_logs && app.show_help {
+            vec![Constraint::Percentage(50), Constraint::Percentage(50)]
+        } else {
+            vec![Constraint::Percentage(100)]
+        };
+        let central_right_zones = Layout::default()
+            .constraints(constraints)
+            .direction(Direction::Vertical)
+            .split(central_zones[1]);
 
-        let logs = List::new(logs)
-            .block(Block::default().borders(Borders::ALL).title(" Logs "))
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-            .highlight_symbol("> ");
+        /*
+         * Draw logs.
+         */
+        if app.show_logs {
+            let logs: Vec<ListItem> = app
+                .logs
+                .items
+                .iter()
+                .map(|i| ListItem::new(Span::raw(i)))
+                .collect();
 
-        f.render_widget(logs, central_zones[1]);
+            let logs = List::new(logs)
+                .block(Block::default().borders(Borders::ALL).title(" Logs "))
+                .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+                .highlight_symbol("> ");
+
+            f.render_widget(logs, central_right_zones[0]);
+        }
+
+        /*
+         * Draw help.
+         */
+        if app.show_help {
+            let help: Vec<ListItem> = app
+                .help
+                .items
+                .iter()
+                .map(|i| ListItem::new(Span::raw(i)))
+                .collect();
+
+            let help = List::new(help)
+                .block(Block::default().borders(Borders::ALL).title(" Help "))
+                .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+
+            let id = central_right_zones.len() - 1;
+            f.render_widget(help, central_right_zones[id]);
+        }
     }
 
     /*
