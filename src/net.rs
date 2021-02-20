@@ -80,6 +80,26 @@ impl Process {
             println!("{}", l);
         }
     }
+
+    pub fn to_string_with_links(&self) -> String {
+        let mut buffer: String = self.to_string();
+        buffer.push('\n');
+
+        for l in self.tlinks.iter() {
+            buffer.push_str("    ");
+            buffer.push_str(l.to_string().as_str());
+            buffer.push('\n');
+        }
+
+        for l in self.ulinks.iter() {
+            buffer.push_str("    ");
+            buffer.push_str(l.to_string().as_str());
+            buffer.push('\n');
+        }
+        buffer.push('\n');
+
+        buffer
+    }
 }
 
 impl PartialEq for Process {
@@ -95,7 +115,7 @@ impl fmt::Display for Process {
         let (tx, tx_unit) = group_bytes(self.tx);
 
         write!(
-            f, "{} ({}) RX:{:.2}{u0} TX:{:.2}{u1}:",
+            f, "{} ({}) RX:{:.2}{u0} TX:{:.2}{u1}",
             self.name,
             self.pid,
             rx,

@@ -133,17 +133,16 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     /*
      * Draw process list.
      */
+    // TODO: build the vec another way to separate processes and links to apply different style
     let procs: Vec<ListItem> = app
         .procs
         .items
         .iter()
-        .map(|i| ListItem::new(Span::raw(&i.name)))
+        .map(|p| ListItem::new(p.to_string_with_links()))
         .collect();
 
     let procs = List::new(procs)
-        .block(Block::default().borders(Borders::ALL).title(" Processes "))
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-        .highlight_symbol("> ");
+        .block(Block::default().borders(Borders::ALL).title(" Processes "));
 
     f.render_stateful_widget(procs, central_zones[0], &mut app.procs.state);
 
