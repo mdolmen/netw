@@ -133,13 +133,22 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     /*
      * Draw process list.
      */
-    // TODO: build the vec another way to separate processes and links to apply different style
+    let style = Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD);
+
     let procs: Vec<ListItem> = app
         .procs
         .items
         .iter()
-        .map(|p| ListItem::new(p.to_string_with_links()))
-        .collect();
+        .flat_map(|p| {
+            let mut tmp = vec![ ListItem::new( Span::styled(p.to_string(), style)) ];
+            let mut tlinks = p.get_tlinks().iter().map(|t| ListItem::new(t.to_string())).collect();
+            let mut ulinks = p.get_ulinks().iter().map(|u| ListItem::new(u.to_string())).collect();
+
+            tmp.append(&mut tlinks);
+            tmp.append(&mut ulinks);
+            tmp
+        })
+        .collect::<Vec<ListItem>>();
 
     let procs = List::new(procs)
         .block(Block::default().borders(Borders::ALL).title(" Processes "));

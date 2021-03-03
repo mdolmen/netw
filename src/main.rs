@@ -113,7 +113,7 @@ fn tui(runnable: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
 fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
     let filters = include_str!("bpf/filters.c");
 
-    log!(String::from("[+] Compiling and installing BPF filters..."));
+    log!(String::from("[+] Compiling and loading BPF filters..."));
 
     let mut filters = BPF::new(filters)?;
 

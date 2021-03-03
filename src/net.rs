@@ -48,11 +48,11 @@ impl Process {
         }
     }
 
-    fn get_tlinks(&self) -> &Vec<Link> {
+    pub fn get_tlinks(&self) -> &Vec<Link> {
         &self.tlinks
     }
 
-    fn get_ulinks(&self) -> &Vec<Link> {
+    pub fn get_ulinks(&self) -> &Vec<Link> {
         &self.ulinks
     }
 
@@ -139,7 +139,7 @@ impl fmt::Display for Process {
 }
 
 #[derive(Clone)]
-struct Link {
+pub struct Link {
     saddr: IpAddr,
     daddr: IpAddr,
     lport: u16,
@@ -235,7 +235,7 @@ impl fmt::Display for Link {
         };
 
         write!(
-            f, "\t{p} {}:{} <-> {}:{} RX: {:.2}{u0} TX: {:.2}{u1}",
+            f, "    {p} {}:{} <-> {}:{} RX: {:.2}{u0} TX: {:.2}{u1}",
             self.saddr,
             self.lport,
             destination,//self.domain,
