@@ -133,14 +133,20 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     /*
      * Draw process list.
      */
-    let style = Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD);
+    let style0 = Style::default().add_modifier(Modifier::BOLD);
+    let style1 = Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD);
 
     let procs: Vec<ListItem> = app
         .procs
         .items
         .iter()
         .flat_map(|p| {
-            let mut tmp = vec![ ListItem::new( Span::styled(p.to_string(), style)) ];
+            let proc_fmt = Spans::from(vec![
+                Span::styled(p.overview_str(), style0),
+                Span::styled(p.data_amount_str(), style1),
+            ]);
+
+            let mut tmp = vec![ ListItem::new(proc_fmt) ];
             let mut tlinks = p.get_tlinks().iter().map(|t| ListItem::new(t.to_string())).collect();
             let mut ulinks = p.get_ulinks().iter().map(|u| ListItem::new(u.to_string())).collect();
 

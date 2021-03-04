@@ -27,7 +27,7 @@ pub enum Prot {
 #[derive(Clone)]
 pub struct Process {
     pid: u32,
-    pub name: String,
+    name: String,
     //command: String,
     tlinks: Vec<Link>,
     ulinks: Vec<Link>,
@@ -99,6 +99,34 @@ impl Process {
         buffer.push('\n');
 
         buffer
+    }
+
+    pub fn overview_str(&self) -> String {
+        format!("{} ({})", self.name, self.pid)
+    }
+
+    pub fn data_amount_str(&self) -> String {
+        let (rx, rx_unit) = group_bytes(self.rx);
+        let (tx, tx_unit) = group_bytes(self.tx);
+
+        format!(" RX:{:.2}{u0} TX:{:.2}{u1}",
+            rx,
+            tx,
+            u0 = match rx_unit {
+                DataUnit::Bytes => "B",
+                DataUnit::KBytes => "KB",
+                DataUnit::MBytes => "MB",
+                DataUnit::GBytes => "GB",
+                DataUnit::TBytes => "TB",
+            },
+            u1 = match tx_unit {
+                DataUnit::Bytes => "B",
+                DataUnit::KBytes => "KB",
+                DataUnit::MBytes => "MB",
+                DataUnit::GBytes => "GB",
+                DataUnit::TBytes => "TB",
+            },
+        )
     }
 }
 
