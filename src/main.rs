@@ -6,6 +6,7 @@ use std::{thread, time, env, error::Error, io, time::Duration};
 use std::sync::{Arc, Mutex};
 use std::mem::drop;
 use std::process::exit;
+use std::path::Path;
 
 use core::sync::atomic::{AtomicBool, Ordering};
 use lazy_static::lazy_static;
@@ -18,6 +19,7 @@ extern crate libc;
 
 mod net;
 mod dns;
+mod database;
 
 /*
  * For tui
@@ -29,6 +31,7 @@ mod util;
 use util::event::{Config, Event, Events};
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use tui::{backend::TermionBackend, Terminal};
+use database::create_db;
 
 enum ExitCode {
     Success,
@@ -50,6 +53,11 @@ macro_rules! log {
     };
 }
 
+///
+/// Raw terminal display.
+///
+/// * `runnable` - A reference shared by all threads
+///
 fn display(runnable: Arc<AtomicBool>) {
     while runnable.load(Ordering::SeqCst) {
         thread::sleep(time::Duration::new(1, 0));
@@ -68,6 +76,11 @@ fn display(runnable: Arc<AtomicBool>) {
     }
 }
 
+///
+/// Terminal UI
+///
+/// * `runnable` - A reference shared by all threads
+///
 fn tui(runnable: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     let tick_rate = 500;
     let enhanced_graphics = true;
@@ -111,6 +124,34 @@ fn tui(runnable: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+///
+/// Run in daemon mode. The data retrieved by the probes is stored in a SQL database.
+///
+/// * `runnable` - A reference shared by all threads
+/// * `freq`     - Time, in seconds, between two update of the db
+///
+fn run_daemon(runnable: Arc<AtomicBool>, filename: String, freq: u64) {
+    let delay = Duration::new(freq, 0);
+
+    if !Path::new(&filename).exists() {
+        create_db(filename);
+    }
+
+    println!("db created");
+    exit(0);
+
+    while runnable.load(Ordering::SeqCst) {
+        thread::sleep(delay);
+
+        // TODO: flush to DB
+    }
+}
+
+///
+/// Compile BPF code and start the probes.
+///
+/// * `runnable` - A reference shared by all threads
+///
 fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
     let filters = include_str!("bpf/filters.c");
 
@@ -160,8 +201,6 @@ fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
 
     while runnable.load(Ordering::SeqCst) {
         filters.perf_map_poll(200);
-
-        // TODO: add data to a SQL base every now and then (here or somewhere else)
     }
 
     Ok(())
@@ -171,6 +210,7 @@ fn main() {
     let runnable = Arc::new(AtomicBool::new(true));
     let arc_main = runnable.clone();
     let arc_display = runnable.clone();
+    let arc_daemon = runnable.clone();
     let mut test = false;
     let mut set_ctrlc = false;
 
@@ -190,13 +230,20 @@ fn main() {
              .possible_values(&["daemon", "test", "ui", "raw"]))
         .get_matches();
 
+    // TODO: a config file
+    //      -> write frequency to the DB
+    //      -> DB filename
+
     /*
      * Start the program in the selected mode.
      */
     match matches.value_of("mode").unwrap() {
         "daemon" => {
-            println!("TO BE IMPLEMENTED");
-            exit(0);
+            set_ctrlc = true;
+            let freq = 5;
+            thread::spawn(move || {
+                run_daemon(arc_daemon, String::from("cats.db"), freq);
+            });
         },
         "test" => {
             test = true;
@@ -226,6 +273,9 @@ fn main() {
         })
         .expect("Failed to set handler for SIGINT/SIGTERM");
     }
+
+    // TODO: open DB and display info from it instead of running the probes
+    //      -> add an arg
 
     match do_main(runnable) {
         Err(e) => {
