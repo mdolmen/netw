@@ -5,10 +5,12 @@ use bcc::{BPF, Kprobe, BccError};
 use std::{thread, time, env, error::Error, io, time::Duration};
 use std::sync::{Arc, Mutex};
 use std::mem::drop;
+use std::process::exit;
 
 use core::sync::atomic::{AtomicBool, Ordering};
 use lazy_static::lazy_static;
 use ctrlc;
+use clap;
 
 #[macro_use]
 extern crate num_derive; // FromPrimitive()
@@ -24,7 +26,6 @@ mod ui;
 #[allow(dead_code)]
 mod util;
 
-use ui::App;
 use util::event::{Config, Event, Events};
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use tui::{backend::TermionBackend, Terminal};
@@ -82,7 +83,7 @@ fn tui(runnable: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(" Sekhmet ", enhanced_graphics);
+    let mut app = ui::App::new(" Sekhmet ", enhanced_graphics);
 
     loop {
         terminal.draw(|f| ui::draw(f, &mut app))?;
@@ -159,39 +160,71 @@ fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
 
     while runnable.load(Ordering::SeqCst) {
         filters.perf_map_poll(200);
+
+        // TODO: add data to a SQL base every now and then (here or somewhere else)
     }
 
     Ok(())
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let mut test = false;
-
     let runnable = Arc::new(AtomicBool::new(true));
     let arc_main = runnable.clone();
     let arc_display = runnable.clone();
+    let mut test = false;
+    let mut set_ctrlc = false;
 
-    // TODO: use clap to properly handle args
-    if args.len() > 1 {
-        test = true;
-        println!("[debug] test mode");
+    /*
+     * Setup program info and possible arguments.
+     */
+    let matches = clap::App::new("Sekhmet")
+        .version("0.1")
+        .about("Log and watch network activity per process.")
+        .author("Mathieu D. <mathieu.dolmen@gmail.com>")
+        .arg(clap::Arg::with_name("mode")
+             .short("m")
+             .long("mode")
+             .help("Select the execution mode")
+             .required(true)
+             .takes_value(true)
+             .possible_values(&["daemon", "test", "ui", "raw"]))
+        .get_matches();
+
+    /*
+     * Start the program in the selected mode.
+     */
+    match matches.value_of("mode").unwrap() {
+        "daemon" => {
+            println!("TO BE IMPLEMENTED");
+            exit(0);
+        },
+        "test" => {
+            test = true;
+            set_ctrlc = true;
+            println!("[debug] test mode");
+        },
+        "ui" => {
+            thread::spawn(move || {
+                tui(arc_display);
+            });
+        },
+        "raw" => {
+            set_ctrlc = true;
+            thread::spawn(move || {
+                display(arc_display);
+            });
+        },
+        _ => unreachable!(),
     }
 
-    // TODO: useless with TUI
-    ctrlc::set_handler(move || {
-        arc_main.store(false, Ordering::SeqCst);
-        if test {
-            let _ret = net::log_iperf_to_file();
-        }
-    })
-    .expect("Failed to set handler for SIGINT/SIGTERM");
-
-    if !test {
-        thread::spawn(move || {
-            //display(arc_display);
-            tui(arc_display);
-        });
+    if set_ctrlc {
+        ctrlc::set_handler(move || {
+            arc_main.store(false, Ordering::SeqCst);
+            if test {
+                let _ret = net::log_iperf_to_file();
+            }
+        })
+        .expect("Failed to set handler for SIGINT/SIGTERM");
     }
 
     match do_main(runnable) {

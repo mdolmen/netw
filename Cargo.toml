@@ -14,6 +14,7 @@ libc     =  "0.2.80"
 socket2  =  "0.3"
 tui      =  "0.14"
 termion  =  "1.5"
+rusqlite =  "0.24.2"
 
 # To cast an int to its enum equivalent
 num = "0.3"
