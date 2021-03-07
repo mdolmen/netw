@@ -135,16 +135,14 @@ fn run_daemon(runnable: Arc<AtomicBool>, filename: String, freq: u64) {
 
     if !Path::new(&filename).exists() {
         create_db(filename);
+        println!("db created");
     }
 
-    println!("db created");
-    exit(0);
+    //while runnable.load(Ordering::SeqCst) {
+    //    thread::sleep(delay);
 
-    while runnable.load(Ordering::SeqCst) {
-        thread::sleep(delay);
-
-        // TODO: flush to DB
-    }
+    //    // TODO: flush to DB
+    //}
 }
 
 ///
@@ -241,9 +239,13 @@ fn main() {
         "daemon" => {
             set_ctrlc = true;
             let freq = 5;
-            thread::spawn(move || {
+            let test_th = thread::spawn(move || {
                 run_daemon(arc_daemon, String::from("cats.db"), freq);
             });
+
+            // TEST
+            test_th.join();
+            std::process::exit(ExitCode::Success as i32);
         },
         "test" => {
             test = true;

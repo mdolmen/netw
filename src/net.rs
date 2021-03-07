@@ -31,13 +31,13 @@ pub struct Process {
     //command: String,
     tlinks: Vec<Link>,
     ulinks: Vec<Link>,
-    rx: u64,
-    tx: u64,
+    rx: isize,
+    tx: isize,
     //status: u8, // TODO: enum
 }
 
 impl Process {
-    fn new(pid: u32) -> Self {
+    pub fn new(pid: u32) -> Self {
         Process {
             pid: pid,
             name: String::new(),
@@ -48,6 +48,37 @@ impl Process {
         }
     }
 
+    fn add_data(&mut self, size: isize, is_rx: u32) {
+        match is_rx {
+            0 => self.tx += size,
+            1 => self.rx += size,
+            _ => (),
+        }
+    }
+
+    pub fn name(&mut self, name: String) -> &mut Self {
+        self.name = name;
+        self
+    }
+
+    pub fn rx(&mut self, rx: isize) -> &mut Self {
+        self.rx = rx;
+        self
+    }
+
+    pub fn tx(&mut self, tx: isize) -> &mut Self {
+        self.tx = tx;
+        self
+    }
+
+    pub fn get_pid(&self) -> u32 {
+        self.pid
+    }
+
+    pub fn get_name(&self) -> &String {
+        &self.name
+    }
+
     pub fn get_tlinks(&self) -> &Vec<Link> {
         &self.tlinks
     }
@@ -56,17 +87,8 @@ impl Process {
         &self.ulinks
     }
 
-    fn add_data(&mut self, size: u64, is_rx: u32) {
-        match is_rx {
-            0 => self.tx += size,
-            1 => self.rx += size,
-            _ => (),
-        }
-    }
-
-    fn name(&mut self, name: String) -> &mut Self {
-        self.name = name;
-        self
+    pub fn get_rx_tx(&self) -> (isize, isize) {
+        (self.rx, self.tx)
     }
 
     pub fn print_tlinks(&self) {
@@ -172,8 +194,8 @@ pub struct Link {
     daddr: IpAddr,
     lport: u16,
     dport: u16,
-    rx: u64,
-    tx: u64,
+    rx: isize,
+    tx: isize,
     prot: Prot,
     domain: String,
 }
@@ -192,7 +214,7 @@ impl Link {
         }
     }
 
-    fn add_data(&mut self, size: u64, is_rx: u32) {
+    fn add_data(&mut self, size: isize, is_rx: u32) {
         match is_rx {
             0 => self.tx += size,
             1 => self.rx += size,
@@ -330,7 +352,7 @@ pub fn tcp4_cb() -> Box<dyn FnMut(&[u8]) + Send> {
         );
         l.prot(Prot::TCP);
 
-        update_procs_and_links(p, l, data.size as u64, data.is_rx, Prot::TCP);
+        update_procs_and_links(p, l, data.size as isize, data.is_rx, Prot::TCP);
     })
 }
 
@@ -348,7 +370,7 @@ pub fn tcp6_cb() -> Box<dyn FnMut(&[u8]) + Send> {
         );
         l.prot(Prot::TCP);
 
-        update_procs_and_links(p, l, data.size as u64, data.is_rx, Prot::TCP);
+        update_procs_and_links(p, l, data.size as isize, data.is_rx, Prot::TCP);
     })
 }
 
@@ -366,7 +388,7 @@ pub fn udp4_cb() -> Box<dyn FnMut(&[u8]) + Send> {
         );
         l.prot(Prot::UDP);
 
-        update_procs_and_links(p, l, data.size as u64, data.is_rx, Prot::UDP);
+        update_procs_and_links(p, l, data.size as isize, data.is_rx, Prot::UDP);
     })
 }
 
@@ -384,7 +406,7 @@ pub fn udp6_cb() -> Box<dyn FnMut(&[u8]) + Send> {
         );
         l.prot(Prot::UDP);
 
-        update_procs_and_links(p, l, data.size as u64, data.is_rx, Prot::UDP);
+        update_procs_and_links(p, l, data.size as isize, data.is_rx, Prot::UDP);
     })
 }
 
@@ -392,7 +414,7 @@ pub fn udp6_cb() -> Box<dyn FnMut(&[u8]) + Send> {
 /// Record the current network connection.
 ///
 fn update_procs_and_links(
-    mut p: Process, mut l: Link, packets_size: u64,
+    mut p: Process, mut l: Link, packets_size: isize,
     is_rx: u32, prot: Prot
 )
 {
@@ -432,6 +454,8 @@ fn update_procs_and_links(
         //let path_cmdline = format!("/proc/{}/cmdline", data.pid);
         //let content_cmdline = fs::read_to_string(path_cmdline);
 
+        // TODO: add date (mm-dd-yy)
+
         let name = match content_comm {
             Ok(mut content) => { content.pop(); content },
             Err(_error) => String::from("file not found"),
@@ -467,7 +491,7 @@ fn parse_struct_ipv6(addr: &[u8]) -> ipv6_data_t {
     unsafe { ptr::read(addr.as_ptr() as *const ipv6_data_t) }
 }
 
-fn group_bytes(bytes: u64) -> (f64, DataUnit) {
+fn group_bytes(bytes: isize) -> (f64, DataUnit) {
     let mut i = 0;
     let mut grouped = bytes as f64;
 
