@@ -31,7 +31,8 @@ mod util;
 use util::event::{Config, Event, Events};
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use tui::{backend::TermionBackend, Terminal};
-use database::create_db;
+use database::{create_db, update_db};
+use crate::net::Process;
 
 enum ExitCode {
     Success,
@@ -45,11 +46,15 @@ lazy_static! {
     static ref LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 }
 
+static DEBUG: bool = true;
+
 macro_rules! log {
     ($x:expr) => {
         let mut tmp = LOGS.lock().unwrap();
         tmp.push($x);
         drop(tmp);
+
+        if DEBUG { println!("{}", $x) }
     };
 }
 
@@ -131,17 +136,37 @@ fn tui(runnable: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
 /// * `freq`     - Time, in seconds, between two update of the db
 ///
 fn run_daemon(runnable: Arc<AtomicBool>, filename: String, freq: u64) {
-    let delay = Duration::new(freq, 0);
+    // TODO: use freq
+    let delay = Duration::new(2, 0);
 
     if !Path::new(&filename).exists() {
-        create_db(filename);
-        println!("db created");
+        create_db(&filename);
+        log!(String::from(format!("[+] Database {} created", &filename)));
     }
 
     //while runnable.load(Ordering::SeqCst) {
     //    thread::sleep(delay);
 
     //    // TODO: flush to DB
+
+    // TEST
+    let mut p0 = Process::new(1);
+    p0.name(String::from("init"));
+    p0.rx(10).tx(200);
+
+    let mut p1 = Process::new(2);
+    p1.name(String::from("systemd"));
+    p1.rx(30).tx(400);
+
+    let mut procs = vec![p0, p1];
+
+    let result = update_db(&filename, procs);
+
+    match result {
+        Err(e) => log!("[-] {}", e),
+    }
+    //
+    //    // TODO: save logs to file
     //}
 }
 
@@ -231,6 +256,8 @@ fn main() {
     // TODO: a config file
     //      -> write frequency to the DB
     //      -> DB filename
+    //      -> display IP addresses or domain
+    //      -> capture TCP and/or UDP, IPv4 and/or IPv6
 
     /*
      * Start the program in the selected mode.

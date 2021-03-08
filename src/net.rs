@@ -19,9 +19,22 @@ pub enum DataUnit {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Prot {
-    NONE,
     TCP,
     UDP,
+    NONE,
+}
+
+impl fmt::Display for Prot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "{}",
+            match self {
+                Prot::NONE => "NONE",
+                Prot::TCP => "TCP",
+                Prot::UDP => "UDP",
+            },
+        )
+    }
 }
 
 #[derive(Clone)]
@@ -150,6 +163,12 @@ impl Process {
             },
         )
     }
+
+    pub fn get_all_info(&self) ->
+        (u32, &String, &Vec<Link>, &Vec<Link>, isize, isize)
+    {
+        (self.pid, &self.name, &self.tlinks, &self.ulinks, self.rx, self.tx)
+    }
 }
 
 impl PartialEq for Process {
@@ -230,6 +249,40 @@ impl Link {
     fn domain(&mut self, name: String) -> &mut Self {
         self.domain = name;
         self
+    }
+
+    pub fn get_saddr(&self) -> String {
+        String::from(&self.saddr.to_string())
+    }
+
+    pub fn get_daddr(&self) -> String {
+        String::from(&self.daddr.to_string())
+    }
+
+    pub fn get_lport(&self) -> u16 {
+        self.lport
+    }
+
+    pub fn get_dport(&self) -> u16 {
+        self.dport
+    }
+
+    pub fn get_rx_tx(&self) -> (isize, isize) {
+        (self.rx, self.tx)
+    }
+
+    pub fn get_prot(&self) -> u8 {
+        self.prot as u8
+    }
+
+    pub fn get_domain(&self) -> &String {
+        &self.domain
+    }
+
+    pub fn get_all_info(&self) ->
+        (String, String, u16, u16, isize, isize, u8, &String)
+    {
+        (self.get_saddr(), self.get_daddr(), self.lport, self.dport, self.rx, self.tx, self.prot as u8, self.get_domain())
     }
 }
 

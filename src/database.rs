@@ -3,8 +3,7 @@ use rusqlite::{Connection, Result, NO_PARAMS, params};
 use crate::PROCESSES;
 use crate::net::Process;
 
-pub fn create_db(filename: String) -> Result<()> {
-    let tmp = filename.clone();
+pub fn create_db(filename: &String) -> Result<()> {
     let conn = Connection::open(filename)?;
 
     conn.execute(
@@ -53,28 +52,10 @@ pub fn create_db(filename: String) -> Result<()> {
         NO_PARAMS,
     )?;
 
-    // TEST
-    let mut p0 = Process::new(1);
-    p0.name(String::from("init"));
-    p0.rx(10).tx(200);
-
-    let mut p1 = Process::new(2);
-    p1.name(String::from("systemd"));
-    p1.rx(30).tx(400);
-
-    let mut procs = vec![p0, p1];
-
-    let result = update_db(tmp, procs);
-
-    match result {
-        Ok(v) => println!("process added to the db"),
-        Err(e) => println!("update_db: {}", e),
-    }
-
     Ok(())
 }
 
-fn update_db(filename: String, procs: Vec<Process>) -> Result<()> {
+pub fn update_db(filename: &String, procs: Vec<Process>) -> Result<()> {
     let mut conn = Connection::open(filename)?;
     let transaction = conn.transaction().unwrap();
     let date = "07032021";
@@ -85,15 +66,32 @@ fn update_db(filename: String, procs: Vec<Process>) -> Result<()> {
     )?;
 
     for p in procs {
-        let (rx, tx) = p.get_rx_tx();
+        let (pid, name, tlinks, ulinks, rx, tx) = p.get_all_info();
 
         transaction.execute(
             "INSERT INTO processes (p_pid, p_date_id, p_name, p_rx, p_tx)
              VALUES (?1, (SELECT date_id FROM dates WHERE date_str=?2), ?3, ?4, ?5)
              ON CONFLICT(p_pid, p_date_id) DO UPDATE SET p_rx = p_rx+?4, p_tx = p_tx+?5",
-            params![p.get_pid(), date, p.get_name(), rx, tx,]
+            params![pid, date, name, rx, tx]
         )?;
+
+        for t in p.get_tlinks() {
+            let (saddr, daddr, sport, dport, rx, tx, prot, domain) = t.get_all_info();
+
+            // TODO: finish and test request
+            transaction.execute(
+                "INSERT INTO links (l_p_pid, l_date_id, 
+                    l_saddr, l_daddr, l_lport, l_dport, l_rx, l_tx, l_prot_id, l_domain)
+                 VALUES (?1, (SELECT date_id FROM dates WHERE date_str=?2), ?3, ?4, ?5)
+                 ON CONFLICT(p_pid, p_date_id) DO UPDATE SET p_rx = p_rx+?4, p_tx = p_tx+?5",
+                params![p.get_pid(), date, p.get_name(), rx, tx,]
+            )?;
+        }
     }
 
     transaction.commit()
 }
+
+/*
+ * TODO: TESTS
+ */
