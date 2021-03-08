@@ -75,18 +75,19 @@ pub fn update_db(filename: &String, procs: Vec<Process>) -> Result<()> {
             params![pid, date, name, rx, tx]
         )?;
 
-        for t in p.get_tlinks() {
-            let (saddr, daddr, sport, dport, rx, tx, prot, domain) = t.get_all_info();
+        //for t in p.get_tlinks() {
+        //    let (saddr, daddr, sport, dport, rx, tx, prot, domain) = t.get_all_info();
 
-            // TODO: finish and test request
-            transaction.execute(
-                "INSERT INTO links (l_p_pid, l_date_id, 
-                    l_saddr, l_daddr, l_lport, l_dport, l_rx, l_tx, l_prot_id, l_domain)
-                 VALUES (?1, (SELECT date_id FROM dates WHERE date_str=?2), ?3, ?4, ?5)
-                 ON CONFLICT(p_pid, p_date_id) DO UPDATE SET p_rx = p_rx+?4, p_tx = p_tx+?5",
-                params![p.get_pid(), date, p.get_name(), rx, tx,]
-            )?;
-        }
+        //    // TODO: finish and test request
+        //    transaction.execute(
+        //        "INSERT INTO links (l_p_pid, l_date_id,
+        //            l_saddr, l_daddr, l_lport, l_dport, l_rx, l_tx, l_prot_id, l_domain)
+        //         VALUES (?1, (SELECT date_id FROM dates WHERE date_str=?2),
+        //            ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        //         ON CONFLICT(l_p_pid, l_date_id) DO UPDATE SET l_rx = l_rx+?7, l_tx = l_tx+?8",
+        //        params![pid, date, saddr, daddr, lport, dport, rx, tx, domain]
+        //    )?;
+        //}
     }
 
     transaction.commit()
@@ -95,3 +96,34 @@ pub fn update_db(filename: &String, procs: Vec<Process>) -> Result<()> {
 /*
  * TODO: TESTS
  */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // TODO: init test: rm test.db
+
+    #[test]
+    fn test_create_db() -> Result<()> {
+        let db_name = String::from("test.db");
+
+        create_db(&db_name)
+    }
+
+    #[test]
+    fn test_update_db() -> Result<()> {
+        let db_name = String::from("test.db");
+
+        let mut p0 = Process::new(1);
+        p0.name(String::from("init"));
+        p0.rx(10).tx(200);
+
+        let mut p1 = Process::new(2);
+        p1.name(String::from("systemd"));
+        p1.rx(30).tx(400);
+
+        let mut procs = vec![p0, p1];
+
+        update_db(&db_name, procs)
+    }
+}

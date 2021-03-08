@@ -148,23 +148,6 @@ fn run_daemon(runnable: Arc<AtomicBool>, filename: String, freq: u64) {
     //    thread::sleep(delay);
 
     //    // TODO: flush to DB
-
-    // TEST
-    let mut p0 = Process::new(1);
-    p0.name(String::from("init"));
-    p0.rx(10).tx(200);
-
-    let mut p1 = Process::new(2);
-    p1.name(String::from("systemd"));
-    p1.rx(30).tx(400);
-
-    let mut procs = vec![p0, p1];
-
-    let result = update_db(&filename, procs);
-
-    match result {
-        Err(e) => log!("[-] {}", e),
-    }
     //
     //    // TODO: save logs to file
     //}

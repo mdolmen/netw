@@ -17,7 +17,7 @@ pub enum DataUnit {
     TBytes,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Prot {
     TCP,
     UDP,
