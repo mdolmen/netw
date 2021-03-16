@@ -220,7 +220,7 @@ pub struct Link {
 }
 
 impl Link {
-    fn new(saddr: IpAddr, daddr: IpAddr, lport: u16, dport: u16) -> Link {
+    pub fn new(saddr: IpAddr, daddr: IpAddr, lport: u16, dport: u16) -> Link {
         Link {
             saddr,
             daddr,
@@ -233,7 +233,7 @@ impl Link {
         }
     }
 
-    fn add_data(&mut self, size: isize, is_rx: u32) {
+    pub fn add_data(&mut self, size: isize, is_rx: u32) {
         match is_rx {
             0 => self.tx += size,
             1 => self.rx += size,
@@ -241,12 +241,22 @@ impl Link {
         }
     }
 
-    fn prot(&mut self, prot: Prot) -> &mut Self {
+    pub fn rx(&mut self, rx: isize) -> &mut Self {
+        self.rx = rx;
+        self
+    }
+
+    pub fn tx(&mut self, tx: isize) -> &mut Self {
+        self.tx = tx;
+        self
+    }
+
+    pub fn prot(&mut self, prot: Prot) -> &mut Self {
         self.prot = prot;
         self
     }
 
-    fn domain(&mut self, name: String) -> &mut Self {
+    pub fn domain(&mut self, name: String) -> &mut Self {
         self.domain = name;
         self
     }
