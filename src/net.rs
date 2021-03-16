@@ -74,11 +74,13 @@ impl Process {
         self
     }
 
+    #[allow(dead_code)]
     pub fn rx(&mut self, rx: isize) -> &mut Self {
         self.rx = rx;
         self
     }
 
+    #[allow(dead_code)]
     pub fn tx(&mut self, tx: isize) -> &mut Self {
         self.tx = tx;
         self
@@ -88,6 +90,7 @@ impl Process {
         self.pid
     }
 
+    #[allow(dead_code)]
     pub fn get_name(&self) -> &String {
         &self.name
     }
@@ -100,6 +103,7 @@ impl Process {
         &self.ulinks
     }
 
+    #[allow(dead_code)]
     pub fn get_rx_tx(&self) -> (isize, isize) {
         (self.rx, self.tx)
     }
@@ -116,6 +120,7 @@ impl Process {
         }
     }
 
+    #[allow(dead_code)]
     pub fn to_string_with_links(&self) -> String {
         let mut buffer: String = self.to_string();
         buffer.push('\n');
@@ -241,11 +246,13 @@ impl Link {
         }
     }
 
+    #[allow(dead_code)]
     pub fn rx(&mut self, rx: isize) -> &mut Self {
         self.rx = rx;
         self
     }
 
+    #[allow(dead_code)]
     pub fn tx(&mut self, tx: isize) -> &mut Self {
         self.tx = tx;
         self
@@ -269,18 +276,22 @@ impl Link {
         String::from(&self.daddr.to_string())
     }
 
+    #[allow(dead_code)]
     pub fn get_lport(&self) -> u16 {
         self.lport
     }
 
+    #[allow(dead_code)]
     pub fn get_dport(&self) -> u16 {
         self.dport
     }
 
+    #[allow(dead_code)]
     pub fn get_rx_tx(&self) -> (isize, isize) {
         (self.rx, self.tx)
     }
 
+    #[allow(dead_code)]
     pub fn get_prot(&self) -> u8 {
         self.prot as u8
     }

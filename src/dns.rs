@@ -1,13 +1,13 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs, SocketAddr};
-use std::mem::{transmute, size_of_val};
+use std::net::{IpAddr, SocketAddr};
 use std::ffi::CStr;
 use socket2::SockAddr;
 
-use libc::{sockaddr, getnameinfo, c_char, c_int, socklen_t};
+use libc::{getnameinfo, c_char, c_int, socklen_t};
 
 const MAX_HOST_LEN: socklen_t = 256;
 const MAX_SERV_LEN: socklen_t = 256;
 
+#[allow(dead_code)]
 #[derive(Copy, Clone)]
 enum Flags {
     NiNumerichost  = 1,     // Don't try to look up hostname.

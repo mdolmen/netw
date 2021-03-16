@@ -1,13 +1,11 @@
 use rusqlite::{Connection, Result, NO_PARAMS, params};
 use rusqlite::{Transaction};
-use std::path::Path;
-use std::fs;
+use chrono::Utc;
 
-use crate::PROCESSES;
 use crate::net::{Process, Link};
 
-pub fn create_db(db_name: &String) -> Result<()> {
-    let db = Connection::open(db_name)?;
+pub fn create_db(db_name: &String) -> Result<Connection> {
+    let db = Connection::open(db_name).unwrap();
 
     db.execute(
         "CREATE TABLE processes (
@@ -55,14 +53,20 @@ pub fn create_db(db_name: &String) -> Result<()> {
         NO_PARAMS,
     )?;
 
-    Ok(())
+    Ok(db)
+}
+
+pub fn open_db(db_name: &String) -> Result<Connection> {
+    let db = Connection::open(db_name).unwrap();
+
+    Ok(db)
 }
 
 ///
 /// Returns the number of rows changed.
 ///
 fn insert_proc(transaction: &Transaction, p: &Process, date: &str) -> Result<usize> {
-    let (pid, name, tlinks, ulinks, rx, tx) = p.get_all_info();
+    let (pid, name, _tlinks, _ulinks, rx, tx) = p.get_all_info();
 
     let ret = transaction.execute(
         "INSERT INTO processes (p_pid, p_date_id, p_name, p_rx, p_tx)
@@ -93,12 +97,9 @@ fn insert_link(transaction: &Transaction, pid: u32, l: &Link, date: &str) -> Res
     Ok(ret)
 }
 
-pub fn update_db(db_name: &String, procs: &Vec<Process>) -> Result<()> {
-    let mut db = Connection::open(db_name)?;
+pub fn update_db(db: &mut Connection, procs: &Vec<Process>) -> Result<()> {
+    let date = Utc::now().format("%m%d%Y").to_string();
     let transaction = db.transaction().unwrap();
-
-    // TODO: get today's date
-    let date = "07032021";
 
     transaction.execute(
         "INSERT INTO dates (date_str) VALUES (?1)",
@@ -116,6 +117,9 @@ pub fn update_db(db_name: &String, procs: &Vec<Process>) -> Result<()> {
 
     transaction.commit()
 }
+
+//pub fn get_procs_and_links() -> () {
+//}
 
 /*
  * TESTS
@@ -135,7 +139,9 @@ mod tests {
             fs::remove_file(&db_name);
         }
 
-        create_db(&db_name)
+        create_db(&db_name);
+
+        Ok(())
     }
 
     #[test]

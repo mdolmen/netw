@@ -2,16 +2,17 @@
 
 use bcc::{BPF, Kprobe, BccError};
 
-use std::{thread, time, env, error::Error, io, time::Duration};
+use std::{thread, time, error::Error, io, time::Duration};
 use std::sync::{Arc, Mutex};
 use std::mem::drop;
-use std::process::exit;
 use std::path::Path;
 
 use core::sync::atomic::{AtomicBool, Ordering};
 use lazy_static::lazy_static;
 use ctrlc;
 use clap;
+
+use rusqlite::{Connection};
 
 #[macro_use]
 extern crate num_derive; // FromPrimitive()
@@ -31,7 +32,7 @@ mod util;
 use util::event::{Config, Event, Events};
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use tui::{backend::TermionBackend, Terminal};
-use database::{create_db, update_db};
+use database::{create_db, open_db, update_db};
 use crate::net::Process;
 
 enum ExitCode {
@@ -40,9 +41,12 @@ enum ExitCode {
 }
 
 lazy_static! {
-    static ref PROCESSES: Mutex<Vec<net::Process>> = Mutex::new(Vec::new());
+    // TODO: ring buffer to limit size in memory
+    // TODO: save in some shared memory so UI can connect to running daemon??
+    static ref PROCESSES: Mutex<Vec<Process>> = Mutex::new(Vec::new());
 }
 lazy_static! {
+    // TODO: ring buffer too so we can flush regularly to file, without having duplicates in it
     static ref LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 }
 
@@ -101,6 +105,10 @@ fn tui(runnable: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    // TODO: open DB and display info from it instead of running the probes
+    //      -> add an arg
+    //      -> if open db then no Event::Tick
+
     let mut app = ui::App::new(" Sekhmet ", enhanced_graphics);
 
     loop {
@@ -133,24 +141,30 @@ fn tui(runnable: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
 /// Run in daemon mode. The data retrieved by the probes is stored in a SQL database.
 ///
 /// * `runnable` - A reference shared by all threads
-/// * `freq`     - Time, in seconds, between two update of the db
+/// * `freq`     - Time, in seconds, between two updates of the db
 ///
-fn run_daemon(runnable: Arc<AtomicBool>, filename: String, freq: u64) {
+fn run_daemon(runnable: Arc<AtomicBool>, filename: String, _freq: u64) {
     // TODO: use freq
     let delay = Duration::new(2, 0);
+    let mut db: Connection;
 
     if !Path::new(&filename).exists() {
-        create_db(&filename);
+        db = create_db(&filename).unwrap();
         log!(String::from(format!("[+] Database {} created", &filename)));
+    } else {
+        db = open_db(&filename).unwrap();
+        log!(String::from(format!("[+] Database {} opened", &filename)));
     }
 
-    //while runnable.load(Ordering::SeqCst) {
-    //    thread::sleep(delay);
+    while runnable.load(Ordering::SeqCst) {
+        thread::sleep(delay);
 
-    //    // TODO: flush to DB
-    //
-    //    // TODO: save logs to file
-    //}
+        let procs = PROCESSES.lock().unwrap().to_vec();
+
+        let _ret = update_db(&mut db, &procs);
+
+        // TODO: save logs to file
+    }
 }
 
 ///
@@ -249,13 +263,9 @@ fn main() {
         "daemon" => {
             set_ctrlc = true;
             let freq = 5;
-            let test_th = thread::spawn(move || {
+            thread::spawn(move || {
                 run_daemon(arc_daemon, String::from("cats.db"), freq);
             });
-
-            // TEST
-            test_th.join();
-            std::process::exit(ExitCode::Success as i32);
         },
         "test" => {
             test = true;
@@ -264,7 +274,7 @@ fn main() {
         },
         "ui" => {
             thread::spawn(move || {
-                tui(arc_display);
+                let _ret = tui(arc_display);
             });
         },
         "raw" => {
@@ -285,9 +295,6 @@ fn main() {
         })
         .expect("Failed to set handler for SIGINT/SIGTERM");
     }
-
-    // TODO: open DB and display info from it instead of running the probes
-    //      -> add an arg
 
     match do_main(runnable) {
         Err(e) => {
