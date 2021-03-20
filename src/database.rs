@@ -1,8 +1,36 @@
-use rusqlite::{Connection, Result, NO_PARAMS, params};
-use rusqlite::{Transaction};
+use rusqlite::{Connection, Result, NO_PARAMS, params, Transaction, MappedRows};
+use rusqlite::types::{FromSql, FromSqlResult, FromSqlError, ValueRef};
 use chrono::Utc;
 
-use crate::net::{Process, Link};
+use crate::net::{Process, Link, Prot};
+use std::net::{IpAddr};
+
+///
+/// Newtype pattern. Wrapper around net::IpAddr to implement a the FromSql trait on a foreign type.
+///
+struct IpAddrWrapper(IpAddr);
+
+///
+/// Example of impl of FromSql for cutom types in rusqlite/src/types/url.rs.
+///
+impl FromSql for IpAddrWrapper {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        match value {
+            ValueRef::Text(s) => {
+                let ip_str = std::str::from_utf8(s).map_err(|e| FromSqlError::Other(Box::new(e)))?;
+
+                // We can do this because the FromStr trait is implemented for IpAddr
+                let ip = match ip_str.contains('.') {
+                    true => IpAddr::V4(ip_str.parse().unwrap()),
+                    false => IpAddr::V6(ip_str.parse().unwrap()),
+                };
+
+                Ok(IpAddrWrapper(ip))
+            }
+            _ => Err(FromSqlError::InvalidType),
+        }
+    }
+}
 
 pub fn create_db(db_name: &String) -> Result<Connection> {
     let db = Connection::open(db_name).unwrap();
@@ -12,8 +40,8 @@ pub fn create_db(db_name: &String) -> Result<Connection> {
             p_pid       INTEGER NOT NULL,
             p_date_id   TEXT NOT NULL,
             p_name      TEXT NOT NULL DEFAULT '',
-            p_rx        REAL,
-            p_tx        REAL,
+            p_rx        INTEGER,
+            p_tx        INTEGER,
             CONSTRAINT processes_fk_0 FOREIGN KEY (p_date_id) REFERENCES dates(date_id),
             PRIMARY KEY (p_pid, p_date_id)
         );",
@@ -29,7 +57,7 @@ pub fn create_db(db_name: &String) -> Result<Connection> {
     db.execute(
         "CREATE TABLE dates (
             date_id     INTEGER PRIMARY KEY ASC,
-            date_str    TEXT NOT NULL
+            date_str    TEXT UNIQUE NOT NULL
         );",
         NO_PARAMS,
     )?;
@@ -41,8 +69,8 @@ pub fn create_db(db_name: &String) -> Result<Connection> {
             l_daddr     TEXT NULL DEFAULT '',
             l_lport     INTEGER,
             l_dport     INTEGER,
-            l_rx        REAL,
-            l_tx        REAL,
+            l_rx        INTEGER,
+            l_tx        INTEGER,
             l_prot_id   INTEGER,
             l_domain    TEXT NOT NULL DEFAULT '',
             CONSTRAINT links_fk_0 FOREIGN KEY (l_p_pid) REFERENCES processes(p_id),
@@ -97,6 +125,9 @@ fn insert_link(transaction: &Transaction, pid: u32, l: &Link, date: &str) -> Res
     Ok(ret)
 }
 
+///
+/// Add processes and links contained in 'procs' to the database 'db'.
+///
 pub fn update_db(db: &mut Connection, procs: &Vec<Process>) -> Result<()> {
     let date = Utc::now().format("%m%d%Y").to_string();
     let transaction = db.transaction().unwrap();
@@ -118,8 +149,73 @@ pub fn update_db(db: &mut Connection, procs: &Vec<Process>) -> Result<()> {
     transaction.commit()
 }
 
-//pub fn get_procs_and_links() -> () {
-//}
+fn get_links(db: &Connection, p: &mut Process) {
+    let mut stmt = db.prepare_cached(
+        "SELECT l.l_saddr, l.l_daddr, l.l_lport,
+            l.l_dport, l.l_rx, l.l_tx, l.l_prot_id, l.l_domain
+         FROM links l, dates
+         WHERE l.l_p_pid = :pid AND dates.date_str = :date_str;"
+    ).unwrap();
+
+    let links = stmt.query_map_named(
+        &[(":pid", &p.pid), (":date_str", &p.date.as_str())], |row| {
+        let saddr: IpAddrWrapper = row.get(0)?;
+        let daddr: IpAddrWrapper = row.get(1)?;
+
+        Ok(
+            Link {
+                saddr: saddr.0,
+                daddr: daddr.0,
+                lport: row.get(2)?,
+                dport: row.get(3)?,
+                rx: row.get(4)?,
+                tx: row.get(5)?,
+                prot: row.get(6)?,
+                domain: row.get(7)?,
+            }
+        )
+    }).unwrap();
+
+    for item in links {
+        let link = item.unwrap();
+
+        //println!("    link: {} {} {} {}", link.saddr, link.prot, link.rx, link.tx);
+
+        match link.prot {
+            Prot::TCP => p.tlinks.push(link),
+            Prot::UDP => p.ulinks.push(link),
+            _ => (),
+        };
+    }
+    //println!("tlinks: {} ulinks: {}", p.tlinks.len(), p.ulinks.len());
+}
+
+pub fn get_procs(db: &Connection) -> () {
+    let mut stmt = db.prepare(
+        "SELECT p.p_pid, p.p_name, p.p_rx, p.p_tx, dates.date_str
+         FROM processes p
+         LEFT JOIN dates ON dates.date_id = p.p_date_id;"
+    ).unwrap();
+
+    let procs = stmt.query_map(NO_PARAMS, |row| {
+        Ok( Process {
+            pid: row.get(0)?,
+            name: row.get(1)?,
+            tlinks: Vec::new(),
+            ulinks: Vec::new(),
+            rx: row.get(2)?,
+            tx: row.get(3)?,
+            date: row.get(4)?,
+        })
+    }).unwrap();
+
+    for item in procs {
+        let mut p = item.unwrap();
+        //println!("procs: {} {}", p, p.date);
+
+        get_links(db, &mut p);
+    }
+}
 
 /*
  * TESTS
@@ -130,6 +226,8 @@ mod tests {
     use super::*;
     use std::net::{IpAddr, Ipv4Addr};
     use crate::net::Prot;
+    use std::path::Path;
+    use std::fs;
 
     #[test]
     fn test_create_db() -> Result<()> {

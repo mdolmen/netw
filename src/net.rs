@@ -6,6 +6,8 @@ use std::io::prelude::*;
 use crate::PROCESSES;
 use crate::dns::reverse_lookup;
 
+use rusqlite::types::{FromSql, FromSqlResult, FromSqlError, ValueRef};
+
 extern crate num;
 
 #[derive(Copy, Clone, Debug, FromPrimitive)]
@@ -37,15 +39,26 @@ impl fmt::Display for Prot {
     }
 }
 
+impl FromSql for Prot {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        match value.as_i64() {
+            Ok(0) => Ok(Prot::TCP),
+            Ok(1) => Ok(Prot::UDP),
+            _ => Err(FromSqlError::InvalidType),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Process {
-    pid: u32,
-    name: String,
+    pub pid: u32,
+    pub name: String,
     //command: String,
-    tlinks: Vec<Link>,
-    ulinks: Vec<Link>,
-    rx: isize,
-    tx: isize,
+    pub tlinks: Vec<Link>,
+    pub ulinks: Vec<Link>,
+    pub rx: isize,
+    pub tx: isize,
+    pub date: String,
     //status: u8, // TODO: enum
 }
 
@@ -58,8 +71,12 @@ impl Process {
             ulinks: Vec::new(),
             rx: 0,
             tx: 0,
+            date: String::new(),
         }
     }
+
+    // TODO: do we really need builder pattern here?!
+    //      -> delete all getters since Process fields are now public
 
     fn add_data(&mut self, size: isize, is_rx: u32) {
         match is_rx {
@@ -83,6 +100,12 @@ impl Process {
     #[allow(dead_code)]
     pub fn tx(&mut self, tx: isize) -> &mut Self {
         self.tx = tx;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn date(&mut self, date: String) -> &mut Self {
+        self.date = date;
         self
     }
 
@@ -214,14 +237,14 @@ impl fmt::Display for Process {
 
 #[derive(Clone)]
 pub struct Link {
-    saddr: IpAddr,
-    daddr: IpAddr,
-    lport: u16,
-    dport: u16,
-    rx: isize,
-    tx: isize,
-    prot: Prot,
-    domain: String,
+    pub saddr: IpAddr,
+    pub daddr: IpAddr,
+    pub lport: u16,
+    pub dport: u16,
+    pub rx: isize,
+    pub tx: isize,
+    pub prot: Prot,
+    pub domain: String,
 }
 
 impl Link {
