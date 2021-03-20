@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result, NO_PARAMS, params, Transaction, MappedRows};
+use rusqlite::{Connection, Result, NO_PARAMS, params, Transaction};
 use rusqlite::types::{FromSql, FromSqlResult, FromSqlError, ValueRef};
 use chrono::Utc;
 
@@ -190,14 +190,14 @@ fn get_links(db: &Connection, p: &mut Process) {
     //println!("tlinks: {} ulinks: {}", p.tlinks.len(), p.ulinks.len());
 }
 
-pub fn get_procs(db: &Connection) -> () {
+pub fn get_procs(db: &Connection) -> Vec<Process> {
     let mut stmt = db.prepare(
         "SELECT p.p_pid, p.p_name, p.p_rx, p.p_tx, dates.date_str
          FROM processes p
          LEFT JOIN dates ON dates.date_id = p.p_date_id;"
     ).unwrap();
 
-    let procs = stmt.query_map(NO_PARAMS, |row| {
+    let rows = stmt.query_map(NO_PARAMS, |row| {
         Ok( Process {
             pid: row.get(0)?,
             name: row.get(1)?,
@@ -209,12 +209,18 @@ pub fn get_procs(db: &Connection) -> () {
         })
     }).unwrap();
 
-    for item in procs {
+    let mut procs: Vec<Process> = Vec::new();
+
+    for item in rows {
         let mut p = item.unwrap();
         //println!("procs: {} {}", p, p.date);
 
         get_links(db, &mut p);
+
+        procs.push(p);
     }
+
+    procs
 }
 
 /*

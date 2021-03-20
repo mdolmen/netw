@@ -1,6 +1,6 @@
 [package]
 name = "sekhmet"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Mathieu Dolmen <mathieu.dolmen@gmail.com>"]
 edition = "2018"
 

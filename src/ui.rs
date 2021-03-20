@@ -9,6 +9,9 @@ use tui::{
 };
 use crate::{PROCESSES, LOGS};
 use crate::net::Process;
+use crate::database::get_procs;
+
+use rusqlite::Connection;
 
 pub struct App<'a> {
     pub title: &'a str,
@@ -20,6 +23,7 @@ pub struct App<'a> {
     pub logs: StatefulList<String>,
     pub help: StatefulList<String>,
     pub enhanced_graphics: bool,
+    pub db: Option<Connection>,
 }
 
 impl<'a> App<'a> {
@@ -30,7 +34,7 @@ impl<'a> App<'a> {
             tabs: TabsState::new(vec!["Tab0", "Tab1", "Tab2"]),
             show_logs: true,
             show_help: false,
-            procs: StatefulList::with_items(PROCESSES.lock().unwrap().to_vec()),
+            procs: StatefulList::new(),
             logs: StatefulList::with_items(LOGS.lock().unwrap().to_vec()),
             help: StatefulList::with_items(vec![
                 String::from("h: display/hide help"),
@@ -38,7 +42,18 @@ impl<'a> App<'a> {
                 String::from("q: quit"),
             ]),
             enhanced_graphics,
+            db: None,
         }
+    }
+
+    pub fn procs(&mut self, procs: Vec<Process>) -> &mut Self {
+        self.procs = StatefulList::with_items(procs);
+        self
+    }
+
+    pub fn db(&mut self, db: Connection) -> &mut Self {
+        self.db = Some(db);
+        self
     }
 
     pub fn on_up(&mut self) {
@@ -76,6 +91,12 @@ impl<'a> App<'a> {
         self.procs = StatefulList::with_items(PROCESSES.lock().unwrap().to_vec());
         self.logs = StatefulList::with_items(LOGS.lock().unwrap().to_vec());
     }
+
+    pub fn on_tick_db(&mut self) {
+        let db = self.db.as_ref().unwrap();
+        self.procs = StatefulList::with_items(get_procs(&db));
+        self.logs = StatefulList::with_items(LOGS.lock().unwrap().to_vec());
+    }
 }
 
 pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
@@ -104,7 +125,7 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .map(|t| Spans::from(Span::styled(*t, Style::default().fg(Color::Green))))
         .collect();
 
-    // TODO: get interfaces
+    // TODO: get dates
     let tabs = Tabs::new(titles)
         .block(Block::default().borders(Borders::ALL).title(app.title))
         .highlight_style(Style::default().fg(Color::Yellow))

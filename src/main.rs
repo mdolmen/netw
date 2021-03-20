@@ -32,7 +32,7 @@ mod util;
 use util::event::{Config, Event, Events};
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use tui::{backend::TermionBackend, Terminal};
-use database::{create_db, open_db, update_db};
+use database::{create_db, open_db, update_db, get_procs};
 use crate::net::Process;
 
 enum ExitCode {
@@ -50,7 +50,7 @@ lazy_static! {
     static ref LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 }
 
-static DEBUG: bool = true;
+static DEBUG: bool = false;
 
 macro_rules! log {
     ($x:expr) => {
@@ -90,9 +90,28 @@ fn display(runnable: Arc<AtomicBool>) {
 ///
 /// * `runnable` - A reference shared by all threads
 ///
-fn tui(runnable: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
-    let tick_rate = 500;
+fn tui(runnable: Arc<AtomicBool>, source: String) -> Result<(), Box<dyn Error>> {
+    let mut tick_rate = 500;
     let enhanced_graphics = true;
+    let mut procs: Vec<Process>;
+    let mut app = ui::App::new(" Sekhmet ", enhanced_graphics);
+
+    /*
+     * Select the input source to display data from.
+     */
+    if source == "realtime" {
+        procs = PROCESSES.lock().unwrap().to_vec();
+    } else {
+        let db = open_db(&source).unwrap();
+        log!(String::from(format!("[+] Database {} opened", &source)));
+
+        // TODO: make the same as 'freq'
+        tick_rate = 120000;
+        procs = get_procs(&db);
+        app.db(db);
+    }
+
+    app.procs(procs);
 
     let events = Events::with_config(Config {
         tick_rate: Duration::from_millis(tick_rate),
@@ -104,12 +123,6 @@ fn tui(runnable: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     let stdout = AlternateScreen::from(stdout);
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-
-    // TODO: open DB and display info from it instead of running the probes
-    //      -> add an arg
-    //      -> if open db then no Event::Tick
-
-    let mut app = ui::App::new(" Sekhmet ", enhanced_graphics);
 
     loop {
         terminal.draw(|f| ui::draw(f, &mut app))?;
@@ -124,7 +137,10 @@ fn tui(runnable: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
                 _ => {}
             },
             Event::Tick => {
-                app.on_tick();
+                match app.db {
+                    Some(_) => app.on_tick_db(),
+                    None    => app.on_tick(),
+                }
             }
         }
 
@@ -248,6 +264,13 @@ fn main() {
              .required(true)
              .takes_value(true)
              .possible_values(&["daemon", "test", "ui", "raw"]))
+        .arg(clap::Arg::with_name("source")
+             .short("s")
+             .long("source")
+             .help("Select the input source for the UI")
+             .default_value("realtime")
+             .required(false)
+             .takes_value(true))
         .get_matches();
 
     // TODO: a config file
@@ -255,6 +278,8 @@ fn main() {
     //      -> DB filename
     //      -> display IP addresses or domain
     //      -> capture TCP and/or UDP, IPv4 and/or IPv6
+    //      -> how far long ago (date) to display in the UI
+    //      -> input source filename
 
     /*
      * Start the program in the selected mode.
@@ -262,9 +287,9 @@ fn main() {
     match matches.value_of("mode").unwrap() {
         "daemon" => {
             set_ctrlc = true;
-            let freq = 5;
+            let freq = 5; // TODO: 120
             thread::spawn(move || {
-                run_daemon(arc_daemon, String::from("cats.db"), freq);
+                run_daemon(arc_daemon, String::from("sekhmet.db"), freq);
             });
         },
         "test" => {
@@ -273,8 +298,10 @@ fn main() {
             println!("[debug] test mode");
         },
         "ui" => {
+            let source = matches.value_of("source").unwrap();
+            let source = String::from(source);
             thread::spawn(move || {
-                let _ret = tui(arc_display);
+                let _ret = tui(arc_display, source);
             });
         },
         "raw" => {
