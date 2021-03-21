@@ -133,7 +133,7 @@ pub fn update_db(db: &mut Connection, procs: &Vec<Process>) -> Result<()> {
     let transaction = db.transaction().unwrap();
 
     transaction.execute(
-        "INSERT INTO dates (date_str) VALUES (?1)",
+        "INSERT OR IGNORE INTO dates (date_str) VALUES (?1)",
         params![date],
     )?;
 
