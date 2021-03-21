@@ -3,6 +3,7 @@
 use bcc::{BPF, Kprobe, BccError};
 
 use std::{thread, time, error::Error, io, time::Duration};
+use std::thread::JoinHandle;
 use std::sync::{Arc, Mutex};
 use std::mem::drop;
 use std::path::Path;
@@ -50,7 +51,7 @@ lazy_static! {
     static ref LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 }
 
-static DEBUG: bool = false;
+static DEBUG: bool = true;
 
 macro_rules! log {
     ($x:expr) => {
@@ -93,7 +94,7 @@ fn display(runnable: Arc<AtomicBool>) {
 fn tui(runnable: Arc<AtomicBool>, source: String) -> Result<(), Box<dyn Error>> {
     let mut tick_rate = 500;
     let enhanced_graphics = true;
-    let mut procs: Vec<Process>;
+    let procs: Vec<Process>;
     let mut app = ui::App::new(" Sekhmet ", enhanced_graphics);
 
     /*
@@ -106,7 +107,7 @@ fn tui(runnable: Arc<AtomicBool>, source: String) -> Result<(), Box<dyn Error>> 
         log!(String::from(format!("[+] Database {} opened", &source)));
 
         // TODO: make the same as 'freq'
-        tick_rate = 120000;
+        tick_rate = 500; //120000;
         procs = get_procs(&db);
         app.db(db);
     }
@@ -247,8 +248,10 @@ fn main() {
     let arc_main = runnable.clone();
     let arc_display = runnable.clone();
     let arc_daemon = runnable.clone();
+    let mut th_ui: Option<JoinHandle<()>> = None;
     let mut test = false;
     let mut set_ctrlc = false;
+    let mut set_probes = true;
 
     /*
      * Setup program info and possible arguments.
@@ -300,9 +303,14 @@ fn main() {
         "ui" => {
             let source = matches.value_of("source").unwrap();
             let source = String::from(source);
-            thread::spawn(move || {
+
+            if source != "realtime" {
+                set_probes = false;
+            }
+
+            th_ui = Some(thread::spawn(move || {
                 let _ret = tui(arc_display, source);
-            });
+            }));
         },
         "raw" => {
             set_ctrlc = true;
@@ -323,13 +331,20 @@ fn main() {
         .expect("Failed to set handler for SIGINT/SIGTERM");
     }
 
-    match do_main(runnable) {
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            std::process::exit(ExitCode::Failure as i32);
+    if set_probes {
+        match do_main(runnable) {
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                std::process::exit(ExitCode::Failure as i32);
+            }
+            _ => {
+                std::process::exit(ExitCode::Success as i32);
+            }
         }
-        _ => {
-            std::process::exit(ExitCode::Success as i32);
-        }
+    }
+
+    match th_ui {
+        Some(th) => th.join().unwrap(),
+        None     => (),
     }
 }
