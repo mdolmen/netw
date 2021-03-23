@@ -14,6 +14,7 @@ use ctrlc;
 use clap;
 
 use rusqlite::{Connection};
+use chrono::Utc;
 
 #[macro_use]
 extern crate num_derive; // FromPrimitive()
@@ -33,7 +34,7 @@ mod util;
 use util::event::{Config, Event, Events};
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use tui::{backend::TermionBackend, Terminal};
-use database::{create_db, open_db, update_db, get_procs};
+use database::{create_db, open_db, update_db, get_procs, get_dates};
 use crate::net::Process;
 
 enum ExitCode {
@@ -49,6 +50,9 @@ lazy_static! {
 lazy_static! {
     // TODO: ring buffer too so we can flush regularly to file, without having duplicates in it
     static ref LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+}
+lazy_static! {
+    static ref DATES: Mutex<Vec<String>> = Mutex::new(Vec::new());
 }
 
 static DEBUG: bool = true;
@@ -109,6 +113,13 @@ fn tui(runnable: Arc<AtomicBool>, source: String) -> Result<(), Box<dyn Error>> 
         // TODO: make the same as 'freq'
         tick_rate = 500; //120000;
         procs = get_procs(&db);
+
+        let mut dates = DATES.lock().unwrap();
+
+        for date in get_dates(&db).iter() {
+            dates.push(date.to_string());
+        };
+
         app.db(db);
     }
 
@@ -138,10 +149,7 @@ fn tui(runnable: Arc<AtomicBool>, source: String) -> Result<(), Box<dyn Error>> 
                 _ => {}
             },
             Event::Tick => {
-                match app.db {
-                    Some(_) => app.on_tick_db(),
-                    None    => app.on_tick(),
-                }
+                app.on_tick();
             }
         }
 
@@ -163,6 +171,7 @@ fn tui(runnable: Arc<AtomicBool>, source: String) -> Result<(), Box<dyn Error>> 
 fn run_daemon(runnable: Arc<AtomicBool>, filename: String, _freq: u64) {
     // TODO: use freq
     let delay = Duration::new(2, 0);
+    let date = Utc::now().format("%m%d%Y").to_string();
     let mut db: Connection;
 
     if !Path::new(&filename).exists() {
@@ -178,7 +187,7 @@ fn run_daemon(runnable: Arc<AtomicBool>, filename: String, _freq: u64) {
 
         let procs = PROCESSES.lock().unwrap().to_vec();
 
-        let _ret = update_db(&mut db, &procs);
+        let _ret = update_db(&mut db, &procs, &date);
 
         // TODO: save logs to file
     }

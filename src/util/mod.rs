@@ -2,15 +2,17 @@ pub mod event;
 
 use tui::widgets::ListState;
 
-pub struct TabsState<'a> {
-    pub titles: Vec<&'a str>,
+// TODO: get rid of timeline and make it a Vec<String>
+pub struct TabsState<> {
+    pub titles: Vec<String>,
     pub index: usize,
 }
 
-impl<'a> TabsState<'a> {
-    pub fn new(titles: Vec<&'a str>) -> TabsState {
+impl TabsState {
+    pub fn new(titles: Vec<String>) -> TabsState {
         TabsState { titles, index: 0 }
     }
+
     pub fn next(&mut self) {
         self.index = (self.index + 1) % self.titles.len();
     }

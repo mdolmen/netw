@@ -1,8 +1,8 @@
 use rusqlite::{Connection, Result, NO_PARAMS, params, Transaction};
 use rusqlite::types::{FromSql, FromSqlResult, FromSqlError, ValueRef};
-use chrono::Utc;
 
 use crate::net::{Process, Link, Prot};
+use crate::DATES;
 use std::net::{IpAddr};
 
 ///
@@ -128,22 +128,26 @@ fn insert_link(transaction: &Transaction, pid: u32, l: &Link, date: &str) -> Res
 ///
 /// Add processes and links contained in 'procs' to the database 'db'.
 ///
-pub fn update_db(db: &mut Connection, procs: &Vec<Process>) -> Result<()> {
-    let date = Utc::now().format("%m%d%Y").to_string();
+pub fn update_db(db: &mut Connection, procs: &Vec<Process>, date: &String) -> Result<()> {
     let transaction = db.transaction().unwrap();
 
-    transaction.execute(
+    let ret = transaction.execute(
         "INSERT OR IGNORE INTO dates (date_str) VALUES (?1)",
         params![date],
     )?;
 
     for p in procs {
-        insert_proc(&transaction, &p, &date)?;
+        insert_proc(&transaction, &p, date)?;
 
         let pid = p.get_pid();
         for tl in p.get_tlinks() {
-            insert_link(&transaction, pid, &tl, &date)?;
+            insert_link(&transaction, pid, &tl, date)?;
         }
+    }
+
+    if ret == 1 {
+        let mut dates = DATES.lock().unwrap();
+        dates.push(date.to_string());
     }
 
     transaction.commit()
@@ -221,6 +225,20 @@ pub fn get_procs(db: &Connection) -> Vec<Process> {
     }
 
     procs
+}
+
+pub fn get_dates(db: &Connection) -> Vec<String> {
+    let mut stmt = db.prepare_cached(
+        "SELECT date_str FROM dates;"
+    ).unwrap();
+
+    let rows = stmt.query_map(NO_PARAMS, |row| {
+        row.get(0)
+    }).unwrap();
+
+    let dates = rows.map(|r| r.unwrap()).collect();
+
+    dates
 }
 
 /*
