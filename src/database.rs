@@ -140,8 +140,13 @@ pub fn update_db(db: &mut Connection, procs: &Vec<Process>, date: &String) -> Re
         insert_proc(&transaction, &p, date)?;
 
         let pid = p.get_pid();
+
         for tl in p.get_tlinks() {
             insert_link(&transaction, pid, &tl, date)?;
+        }
+
+        for ul in p.get_ulinks() {
+            insert_link(&transaction, pid, &ul, date)?;
         }
     }
 
