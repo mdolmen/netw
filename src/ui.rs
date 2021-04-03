@@ -19,6 +19,9 @@ pub struct App<'a> {
     pub tabs: TabsState,
     pub show_logs: bool,
     pub show_help: bool,
+    pub show_tcp: bool,
+    pub show_udp: bool,
+    pub show_all: bool,
     pub procs: StatefulList<Process>,
     pub logs: StatefulList<String>,
     pub help: StatefulList<String>,
@@ -33,12 +36,18 @@ impl<'a> App<'a> {
             should_quit: false,
             tabs: TabsState::new(Date::get_dates_str()),
             show_logs: true,
-            show_help: false,
+            show_help: true,
+            show_tcp: false,
+            show_udp: false,
+            show_all: false,
             procs: StatefulList::new(),
             logs: StatefulList::with_items(LOGS.lock().unwrap().to_vec()),
             help: StatefulList::with_items(vec![
                 String::from("h: display/hide help"),
                 String::from("l: display/hide logs"),
+                String::from("t: display/hide TCP"),
+                String::from("u: display/hide UDP"),
+                String::from("a: display/hide all (TCP+UDP)"),
                 String::from("q: quit"),
             ]),
             enhanced_graphics,
@@ -84,6 +93,17 @@ impl<'a> App<'a> {
             'h' => {
                 self.show_help = !self.show_help;
             }
+            't' => {
+                self.show_tcp = !self.show_tcp;
+            }
+            'u' => {
+                self.show_udp = !self.show_udp;
+            }
+            'a' => {
+                self.show_all = !self.show_all;
+            }
+            // TODO
+            // 'v' for verbose
             _ => {}
         }
     }
@@ -168,11 +188,20 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             ]);
 
             let mut tmp = vec![ ListItem::new(proc_fmt) ];
-            let mut tlinks = p.get_tlinks().iter().map(|t| ListItem::new(t.to_string())).collect();
-            let mut ulinks = p.get_ulinks().iter().map(|u| ListItem::new(u.to_string())).collect();
 
-            tmp.append(&mut tlinks);
-            tmp.append(&mut ulinks);
+            if app.show_tcp || app.show_all {
+                let mut tlinks = p.get_tlinks().iter().map(
+                    |t| ListItem::new(t.to_string())
+                ).collect();
+                tmp.append(&mut tlinks);
+            }
+
+            if app.show_udp || app.show_all {
+                let mut ulinks = p.get_ulinks().iter().map(
+                    |u| ListItem::new(u.to_string())
+                ).collect();
+                tmp.append(&mut ulinks);
+            }
             tmp
         })
         .collect::<Vec<ListItem>>();
