@@ -30,3 +30,17 @@ args:
         help: Write frequency to the database in seconds (when in daemon mode)
         required: false
         default_value: "5"
+
+    #
+    # Capture options
+    #
+    - tcp:
+        long: tcp
+        help: Capture or not TCP traffic
+        required: false
+        default_value: "true"
+    - udp:
+        long: udp
+        help: Capture or not UDP traffic
+        required: false
+        default_value: "true"

@@ -223,7 +223,7 @@ fn run_daemon(runnable: Arc<AtomicBool>, filename: String, _freq: u64) {
 ///
 /// * `runnable` - A reference shared by all threads
 ///
-fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
+fn capture(runnable: Arc<AtomicBool>, tcp: bool, udp: bool) -> Result<(), BccError> {
     let filters = include_str!("bpf/filters.c");
 
     log!(String::from("[+] Compiling and loading BPF filters..."));
@@ -231,42 +231,46 @@ fn do_main(runnable: Arc<AtomicBool>) -> Result<(), BccError> {
     let mut filters = BPF::new(filters)?;
 
     // TCP probes
-    Kprobe::new()
-        .handler("kprobe__tcp_sendmsg")
-        .function("tcp_sendmsg")
-        .attach(&mut filters)?;
-    Kprobe::new()
-        .handler("kprobe__tcp_cleanup_rbuf")
-        .function("tcp_cleanup_rbuf")
-        .attach(&mut filters)?;
+    if tcp {
+        Kprobe::new()
+            .handler("kprobe__tcp_sendmsg")
+            .function("tcp_sendmsg")
+            .attach(&mut filters)?;
+        Kprobe::new()
+            .handler("kprobe__tcp_cleanup_rbuf")
+            .function("tcp_cleanup_rbuf")
+            .attach(&mut filters)?;
+
+        let tcp4_table = filters.table("tcp4_data")?;
+        let tcp6_table = filters.table("tcp6_data")?;
+        filters.init_perf_map(tcp4_table, net::tcp4_cb)?;
+        filters.init_perf_map(tcp6_table, net::tcp6_cb)?;
+    }
 
     // UDP probes
-    Kprobe::new()
-        .handler("kprobe__udp_sendmsg")
-        .function("udp_sendmsg")
-        .attach(&mut filters)?;
-    Kprobe::new()
-        .handler("kprobe__udp_recvmsg")
-        .function("udp_recvmsg")
-        .attach(&mut filters)?;
-    Kprobe::new()
-        .handler("kprobe__udpv6_sendmsg")
-        .function("udpv6_sendmsg")
-        .attach(&mut filters)?;
-    Kprobe::new()
-        .handler("kprobe__udpv6_recvmsg")
-        .function("udpv6_recvmsg")
-        .attach(&mut filters)?;
+    if udp {
+        Kprobe::new()
+            .handler("kprobe__udp_sendmsg")
+            .function("udp_sendmsg")
+            .attach(&mut filters)?;
+        Kprobe::new()
+            .handler("kprobe__udp_recvmsg")
+            .function("udp_recvmsg")
+            .attach(&mut filters)?;
+        Kprobe::new()
+            .handler("kprobe__udpv6_sendmsg")
+            .function("udpv6_sendmsg")
+            .attach(&mut filters)?;
+        Kprobe::new()
+            .handler("kprobe__udpv6_recvmsg")
+            .function("udpv6_recvmsg")
+            .attach(&mut filters)?;
 
-    let tcp4_table = filters.table("tcp4_data")?;
-    let tcp6_table = filters.table("tcp6_data")?;
-    let udp4_table = filters.table("udp4_data")?;
-    let udp6_table = filters.table("udp6_data")?;
-    // TODO: useless var, read the doc
-    let _tcp4_map = filters.init_perf_map(tcp4_table, net::tcp4_cb)?;
-    let _tcp6_map = filters.init_perf_map(tcp6_table, net::tcp6_cb)?;
-    let _udp4_map = filters.init_perf_map(udp4_table, net::udp4_cb)?;
-    let _udp6_map = filters.init_perf_map(udp6_table, net::udp6_cb)?;
+        let udp4_table = filters.table("udp4_data")?;
+        let udp6_table = filters.table("udp6_data")?;
+        filters.init_perf_map(udp4_table, net::udp4_cb)?;
+        filters.init_perf_map(udp6_table, net::udp6_cb)?;
+    }
 
     log!(String::from("[+] All done! Running..."));
 
@@ -294,14 +298,20 @@ fn main() {
     let yaml = clap::load_yaml!("../config.yaml");
     let matches = clap::App::from(yaml).get_matches();
 
+    /*
+     * General options.
+     */
     let freq = matches.value_of("frequency").unwrap();
     let freq: u64 = freq.parse().unwrap();
     let output = String::from( matches.value_of("output").unwrap() );
 
-    // TODO: a config file
-    //      -> capture TCP and/or UDP, IPv4 and/or IPv6
-    //      -> display IP addresses or domain
-    //      -> display or not TCP, UDP
+    /*
+     * Capture options.
+     */
+    let tcp: bool = matches.value_of("tcp").unwrap().parse().unwrap();
+    let udp: bool = matches.value_of("udp").unwrap().parse().unwrap();
+
+    // TODO: add in config
     //      -> how far long ago (date) to display in the UI
 
     /*
@@ -352,7 +362,7 @@ fn main() {
     }
 
     if set_probes {
-        match do_main(runnable) {
+        match capture(runnable, tcp, udp) {
             Err(e) => {
                 eprintln!("Error: {}", e);
                 std::process::exit(ExitCode::Failure as i32);
