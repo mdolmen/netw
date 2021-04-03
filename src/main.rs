@@ -42,6 +42,25 @@ enum ExitCode {
     Failure,
 }
 
+#[derive(Clone)]
+struct Date {
+    pub int_form: u32,
+    pub str_form: String, // MM/DD
+}
+
+impl Date {
+    pub fn get_dates_str() -> Vec<String> {
+        let dates = DATES.lock().unwrap().to_vec();
+        let mut dates_str = Vec::new();
+
+        for d in dates.iter() {
+            dates_str.push(d.str_form.clone());
+        }
+
+        dates_str
+    }
+}
+
 lazy_static! {
     // TODO: ring buffer to limit size in memory
     // TODO: save in some shared memory so UI can connect to running daemon??
@@ -52,7 +71,7 @@ lazy_static! {
     static ref LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 }
 lazy_static! {
-    static ref DATES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    static ref DATES: Mutex<Vec<Date>> = Mutex::new(Vec::new());
 }
 
 static DEBUG: bool = true;
@@ -117,7 +136,12 @@ fn tui(runnable: Arc<AtomicBool>, source: String) -> Result<(), Box<dyn Error>> 
         let mut dates = DATES.lock().unwrap();
 
         for date in get_dates(&db).iter() {
-            dates.push(date.to_string());
+            let tmp = *date / 10000;
+            let month = tmp / 100;
+            let day = tmp % 100;
+
+            let date_str = String::from(format!("{:02}/{:02}", month, day));
+            dates.push( Date { int_form: *date, str_form: date_str } );
         };
 
         app.db(db);
@@ -172,6 +196,7 @@ fn run_daemon(runnable: Arc<AtomicBool>, filename: String, _freq: u64) {
     // TODO: use freq
     let delay = Duration::new(2, 0);
     let date = Utc::now().format("%m%d%Y").to_string();
+    let date: u32 = date.parse().unwrap();
     let mut db: Connection;
 
     if !Path::new(&filename).exists() {
@@ -187,7 +212,7 @@ fn run_daemon(runnable: Arc<AtomicBool>, filename: String, _freq: u64) {
 
         let procs = PROCESSES.lock().unwrap().to_vec();
 
-        let _ret = update_db(&mut db, &procs, &date);
+        let _ret = update_db(&mut db, &procs, date);
 
         // TODO: save logs to file
     }
@@ -290,6 +315,7 @@ fn main() {
     //      -> DB filename
     //      -> display IP addresses or domain
     //      -> capture TCP and/or UDP, IPv4 and/or IPv6
+    //      -> display or not TCP, UDP
     //      -> how far long ago (date) to display in the UI
     //      -> input source filename
 

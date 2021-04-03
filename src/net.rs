@@ -58,7 +58,7 @@ pub struct Process {
     pub ulinks: Vec<Link>,
     pub rx: isize,
     pub tx: isize,
-    pub date: String,
+    pub date: u32,
     //status: u8, // TODO: enum
 }
 
@@ -71,7 +71,7 @@ impl Process {
             ulinks: Vec::new(),
             rx: 0,
             tx: 0,
-            date: String::new(),
+            date: 0,
         }
     }
 
@@ -104,7 +104,7 @@ impl Process {
     }
 
     #[allow(dead_code)]
-    pub fn date(&mut self, date: String) -> &mut Self {
+    pub fn date(&mut self, date: u32) -> &mut Self {
         self.date = date;
         self
     }
@@ -550,8 +550,6 @@ fn update_procs_and_links(
         let content_comm = fs::read_to_string(path_comm);
         //let path_cmdline = format!("/proc/{}/cmdline", data.pid);
         //let content_cmdline = fs::read_to_string(path_cmdline);
-
-        // TODO: add date (mm-dd-yy)
 
         let name = match content_comm {
             Ok(mut content) => { content.pop(); content },

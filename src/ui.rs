@@ -7,7 +7,7 @@ use tui::{
     widgets::{Block, Borders, List, ListItem, Tabs},
     Frame,
 };
-use crate::{PROCESSES, LOGS, DATES};
+use crate::{PROCESSES, LOGS, Date};
 use crate::net::Process;
 use crate::database::get_procs;
 
@@ -31,7 +31,7 @@ impl<'a> App<'a> {
         App {
             title,
             should_quit: false,
-            tabs: TabsState::new(DATES.lock().unwrap().to_vec()),
+            tabs: TabsState::new(Date::get_dates_str()),
             show_logs: true,
             show_help: false,
             procs: StatefulList::new(),
@@ -56,6 +56,7 @@ impl<'a> App<'a> {
         self
     }
 
+    // TODO: scroll the process list
     pub fn on_up(&mut self) {
         self.procs.previous();
     }
@@ -98,7 +99,7 @@ impl<'a> App<'a> {
             }
         }
         self.logs = StatefulList::with_items(LOGS.lock().unwrap().to_vec());
-        self.tabs = TabsState::new(DATES.lock().unwrap().to_vec());
+        self.tabs = TabsState::new(Date::get_dates_str());
     }
 }
 
@@ -151,9 +152,11 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     /*
      * Draw process list.
      */
+    // TODO: make it a function
     let style0 = Style::default().add_modifier(Modifier::BOLD);
     let style1 = Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD);
 
+    // TODO: filter process for which p.date = date
     let procs: Vec<ListItem> = app
         .procs
         .items
@@ -183,6 +186,7 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
      * Create the optional central right block layout.
      */
     if app.show_logs || app.show_help {
+        // TODO: make it a function
         let constraints = if app.show_logs && app.show_help {
             vec![Constraint::Percentage(50), Constraint::Percentage(50)]
         } else {

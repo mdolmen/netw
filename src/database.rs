@@ -2,7 +2,7 @@ use rusqlite::{Connection, Result, NO_PARAMS, params, Transaction};
 use rusqlite::types::{FromSql, FromSqlResult, FromSqlError, ValueRef};
 
 use crate::net::{Process, Link, Prot};
-use crate::DATES;
+use crate::{DATES, Date};
 use std::net::{IpAddr};
 
 ///
@@ -57,7 +57,7 @@ pub fn create_db(db_name: &String) -> Result<Connection> {
     db.execute(
         "CREATE TABLE dates (
             date_id     INTEGER PRIMARY KEY ASC,
-            date_str    TEXT UNIQUE NOT NULL
+            date_int    INTEGER UNIQUE NOT NULL
         );",
         NO_PARAMS,
     )?;
@@ -93,12 +93,12 @@ pub fn open_db(db_name: &String) -> Result<Connection> {
 ///
 /// Returns the number of rows changed.
 ///
-fn insert_proc(transaction: &Transaction, p: &Process, date: &str) -> Result<usize> {
+fn insert_proc(transaction: &Transaction, p: &Process, date: u32) -> Result<usize> {
     let (pid, name, _tlinks, _ulinks, rx, tx) = p.get_all_info();
 
     let ret = transaction.execute(
         "INSERT INTO processes (p_pid, p_date_id, p_name, p_rx, p_tx)
-         VALUES (?1, (SELECT date_id FROM dates WHERE date_str=?2), ?3, ?4, ?5)
+         VALUES (?1, (SELECT date_id FROM dates WHERE date_int=?2), ?3, ?4, ?5)
          ON CONFLICT(p_pid, p_date_id) DO UPDATE SET p_rx = p_rx+?4, p_tx = p_tx+?5",
         params![pid, date, name, rx, tx]
     )?;
@@ -109,13 +109,13 @@ fn insert_proc(transaction: &Transaction, p: &Process, date: &str) -> Result<usi
 ///
 /// Returns the number of rows changed.
 ///
-fn insert_link(transaction: &Transaction, pid: u32, l: &Link, date: &str) -> Result<usize> {
+fn insert_link(transaction: &Transaction, pid: u32, l: &Link, date: u32) -> Result<usize> {
     let (saddr, daddr, lport, dport, rx, tx, prot, domain) = l.get_all_info();
 
     let ret = transaction.execute(
         "INSERT INTO links (l_p_pid, l_date_id,
             l_saddr, l_daddr, l_lport, l_dport, l_rx, l_tx, l_prot_id, l_domain)
-         VALUES (?1, (SELECT date_id FROM dates WHERE date_str=?2),
+         VALUES (?1, (SELECT date_id FROM dates WHERE date_int=?2),
             ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
          ON CONFLICT(l_p_pid, l_date_id, l_saddr, l_daddr, l_lport, l_dport)
          DO UPDATE SET l_rx = l_rx+?7, l_tx = l_tx+?8",
@@ -128,11 +128,11 @@ fn insert_link(transaction: &Transaction, pid: u32, l: &Link, date: &str) -> Res
 ///
 /// Add processes and links contained in 'procs' to the database 'db'.
 ///
-pub fn update_db(db: &mut Connection, procs: &Vec<Process>, date: &String) -> Result<()> {
+pub fn update_db(db: &mut Connection, procs: &Vec<Process>, date: u32) -> Result<()> {
     let transaction = db.transaction().unwrap();
 
     let ret = transaction.execute(
-        "INSERT OR IGNORE INTO dates (date_str) VALUES (?1)",
+        "INSERT OR IGNORE INTO dates (date_int) VALUES (?1)",
         params![date],
     )?;
 
@@ -151,8 +151,13 @@ pub fn update_db(db: &mut Connection, procs: &Vec<Process>, date: &String) -> Re
     }
 
     if ret == 1 {
+        let tmp = date / 10000;
+        let month = tmp / 100;
+        let day = tmp % 100;
+        let date_str = String::from(format!("{:02}/{:02}", month, day));
+
         let mut dates = DATES.lock().unwrap();
-        dates.push(date.to_string());
+        dates.push( Date { int_form: date, str_form: date_str } );
     }
 
     transaction.commit()
@@ -163,11 +168,11 @@ fn get_links(db: &Connection, p: &mut Process) {
         "SELECT l.l_saddr, l.l_daddr, l.l_lport,
             l.l_dport, l.l_rx, l.l_tx, l.l_prot_id, l.l_domain
          FROM links l, dates
-         WHERE l.l_p_pid = :pid AND dates.date_str = :date_str;"
+         WHERE l.l_p_pid = :pid AND dates.date_int = :date_int;"
     ).unwrap();
 
     let links = stmt.query_map_named(
-        &[(":pid", &p.pid), (":date_str", &p.date.as_str())], |row| {
+        &[(":pid", &p.pid), (":date_int", &p.date)], |row| {
         let saddr: IpAddrWrapper = row.get(0)?;
         let daddr: IpAddrWrapper = row.get(1)?;
 
@@ -201,7 +206,7 @@ fn get_links(db: &Connection, p: &mut Process) {
 
 pub fn get_procs(db: &Connection) -> Vec<Process> {
     let mut stmt = db.prepare(
-        "SELECT p.p_pid, p.p_name, p.p_rx, p.p_tx, dates.date_str
+        "SELECT p.p_pid, p.p_name, p.p_rx, p.p_tx, dates.date_int
          FROM processes p
          LEFT JOIN dates ON dates.date_id = p.p_date_id;"
     ).unwrap();
@@ -232,9 +237,9 @@ pub fn get_procs(db: &Connection) -> Vec<Process> {
     procs
 }
 
-pub fn get_dates(db: &Connection) -> Vec<String> {
+pub fn get_dates(db: &Connection) -> Vec<u32> {
     let mut stmt = db.prepare_cached(
-        "SELECT date_str FROM dates;"
+        "SELECT date_int FROM dates;"
     ).unwrap();
 
     let rows = stmt.query_map(NO_PARAMS, |row| {
@@ -312,24 +317,24 @@ mod tests {
         l0.domain(String::from("somewhere.inthe.cloud"));
 
         let pid = 2;
-        let date = "07032021";
+        let date = 07032021;
         tx.execute(
-            "INSERT INTO dates (date_str) VALUES (?1)",
+            "INSERT INTO dates (date_int) VALUES (?1)",
             params![date],
         );
 
         // Should add new procs
-        assert_eq!(insert_proc(&tx, &p0, &date), Ok(1));
-        assert_eq!(insert_proc(&tx, &p1, &date), Ok(1));
+        assert_eq!(insert_proc(&tx, &p0, date), Ok(1));
+        assert_eq!(insert_proc(&tx, &p1, date), Ok(1));
 
         // Should update existing one
-        assert_eq!(insert_proc(&tx, &p2, &date), Ok(1));
+        assert_eq!(insert_proc(&tx, &p2, date), Ok(1));
 
         // Should add a new entry
-        assert_eq!(insert_link(&tx, pid, &l0, &date), Ok(1));
+        assert_eq!(insert_link(&tx, pid, &l0, date), Ok(1));
 
         // Should update an existing entry
-        assert_eq!(insert_link(&tx, pid, &l1, &date), Ok(1));
+        assert_eq!(insert_link(&tx, pid, &l1, date), Ok(1));
 
         tx.commit();
     }
