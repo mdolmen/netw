@@ -283,41 +283,26 @@ fn main() {
     let arc_display = runnable.clone();
     let arc_daemon = runnable.clone();
     let mut th_ui: Option<JoinHandle<()>> = None;
+    let mut th_daemon: Option<JoinHandle<()>> = None;
     let mut test = false;
     let mut set_ctrlc = false;
     let mut set_probes = true;
 
     /*
-     * Setup program info and possible arguments.
+     * Read options from config file.
      */
-    let matches = clap::App::new("Sekhmet")
-        .version("0.1")
-        .about("Log and watch network activity per process.")
-        .author("Mathieu D. <mathieu.dolmen@gmail.com>")
-        .arg(clap::Arg::with_name("mode")
-             .short("m")
-             .long("mode")
-             .help("Select the execution mode")
-             .required(true)
-             .takes_value(true)
-             .possible_values(&["daemon", "test", "ui", "raw"]))
-        .arg(clap::Arg::with_name("source")
-             .short("s")
-             .long("source")
-             .help("Select the input source for the UI")
-             .default_value("realtime")
-             .required(false)
-             .takes_value(true))
-        .get_matches();
+    let yaml = clap::load_yaml!("../config.yaml");
+    let matches = clap::App::from(yaml).get_matches();
+
+    let freq = matches.value_of("frequency").unwrap();
+    let freq: u64 = freq.parse().unwrap();
+    let output = String::from( matches.value_of("output").unwrap() );
 
     // TODO: a config file
-    //      -> write frequency to the DB
-    //      -> DB filename
-    //      -> display IP addresses or domain
     //      -> capture TCP and/or UDP, IPv4 and/or IPv6
+    //      -> display IP addresses or domain
     //      -> display or not TCP, UDP
     //      -> how far long ago (date) to display in the UI
-    //      -> input source filename
 
     /*
      * Start the program in the selected mode.
@@ -325,10 +310,10 @@ fn main() {
     match matches.value_of("mode").unwrap() {
         "daemon" => {
             set_ctrlc = true;
-            let freq = 5; // TODO: 120
-            thread::spawn(move || {
-                run_daemon(arc_daemon, String::from("sekhmet.db"), freq);
-            });
+
+            th_daemon = Some(thread::spawn(move || {
+                run_daemon(arc_daemon, output, freq);
+            }));
         },
         "test" => {
             test = true;
@@ -378,7 +363,14 @@ fn main() {
         }
     }
 
+    /*
+     * Wait for threads to finish.
+     */
     match th_ui {
+        Some(th) => th.join().unwrap(),
+        None     => (),
+    }
+    match th_daemon {
         Some(th) => th.join().unwrap(),
         None     => (),
     }

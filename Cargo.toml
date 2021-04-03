@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 bcc      = "0.0.30"
 ctrlc    = "3.1.6"
-clap     = "2.33.3"
+clap     = { version = "2.33.3", features = ["yaml"] }
 libc     = "0.2.80"
 socket2  = "0.3"
 tui      = "0.14"

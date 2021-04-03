@@ -1,0 +1,32 @@
+name: Sekhmet
+version: "0.6"
+about: Log and watch network activity per process.
+author: Mathieu D. <mathieu.dolmen@gmail.com>
+args:
+    - mode:
+        short: m
+        long: mode
+        help: Select the execution mode
+        required: true
+        takes_value: true
+        possible_values: [daemon, test, ui, raw]
+    - source:
+        short: s
+        long: source
+        help: Select the input source for the UI
+        default_value: sekhmet.db
+        required: false
+        takes_value: true
+    - output:
+        short: o
+        long: ouptut
+        help: Database filename to save information to
+        default_value: sekhmet.db
+        required: false
+        takes_value: true
+    - frequency:
+        short: f
+        long: frequency
+        help: Write frequency to the database in seconds (when in daemon mode)
+        required: false
+        default_value: "5"
