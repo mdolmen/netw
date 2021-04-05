@@ -22,7 +22,7 @@ pub struct App<'a> {
     pub show_tcp: bool,
     pub show_udp: bool,
     pub show_all: bool,
-    pub procs: StatefulList<Process>,
+    pub entries: StatefulList<Process>,
     pub logs: StatefulList<String>,
     pub help: StatefulList<String>,
     pub enhanced_graphics: bool,
@@ -40,7 +40,7 @@ impl<'a> App<'a> {
             show_tcp: false,
             show_udp: false,
             show_all: false,
-            procs: StatefulList::new(),
+            entries: StatefulList::new(),
             logs: StatefulList::with_items(LOGS.lock().unwrap().to_vec()),
             help: StatefulList::with_items(vec![
                 String::from("h: display/hide help"),
@@ -55,8 +55,8 @@ impl<'a> App<'a> {
         }
     }
 
-    pub fn procs(&mut self, procs: Vec<Process>) -> &mut Self {
-        self.procs = StatefulList::with_items(procs);
+    pub fn entries(&mut self, procs: Vec<Process>) -> &mut Self {
+        self.entries = StatefulList::with_items(procs);
         self
     }
 
@@ -67,11 +67,11 @@ impl<'a> App<'a> {
 
     // TODO: scroll the process list
     pub fn on_up(&mut self) {
-        self.procs.previous();
+        self.entries.previous();
     }
 
     pub fn on_down(&mut self) {
-        self.procs.next();
+        self.entries.next();
     }
 
     pub fn on_right(&mut self) {
@@ -112,10 +112,10 @@ impl<'a> App<'a> {
         match self.db {
             Some(_) => {
                 let db = self.db.as_ref().unwrap();
-                self.procs = StatefulList::with_items(get_procs(&db));
+                self.entries = StatefulList::with_items(get_procs(&db));
             }
             None    => {
-                self.procs = StatefulList::with_items(PROCESSES.lock().unwrap().to_vec());
+                self.entries = StatefulList::with_items(PROCESSES.lock().unwrap().to_vec());
             }
         }
         self.logs = StatefulList::with_items(LOGS.lock().unwrap().to_vec());
@@ -127,13 +127,14 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     /*
      * Create the main layout: split the screen in 3 blocks.
      */
+    let nb_rows = f.size().height;
     let zones = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
         .constraints(
             [
                 Constraint::Length(3),
-                Constraint::Max(f.size().height),
+                Constraint::Max(nb_rows),
                 Constraint::Length(3)
             ].as_ref()
         )
@@ -177,8 +178,11 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let style1 = Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD);
 
     // TODO: filter process for which p.date = date
+
+    // TODO: find a way to update app.entries so that app.entries.len() is the actual number of
+    // entries to show (procs + links) and not just the number of processes.
     let procs: Vec<ListItem> = app
-        .procs
+        .entries
         .items
         .iter()
         .flat_map(|p| {
@@ -206,10 +210,13 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         })
         .collect::<Vec<ListItem>>();
 
-    let procs = List::new(procs)
-        .block(Block::default().borders(Borders::ALL).title(" Processes "));
+    app.entries.nb_items = procs.len();
 
-    f.render_stateful_widget(procs, central_zones[0], &mut app.procs.state);
+    let procs = List::new(procs)
+        .block(Block::default().borders(Borders::ALL).title(" Processes "))
+        .highlight_style(Style::default().fg(Color::Green));
+
+    f.render_stateful_widget(procs, central_zones[0], &mut app.entries.state);
 
     /*
      * Create the optional central right block layout.

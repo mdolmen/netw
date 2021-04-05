@@ -2,7 +2,11 @@ pub mod event;
 
 use tui::widgets::ListState;
 
-// TODO: get rid of timeline and make it a Vec<String>
+/*
+ * Save the selected item index to keep the selection across UI refresh.
+ */
+static mut SELECTED: usize = 0;
+
 pub struct TabsState<> {
     pub titles: Vec<String>,
     pub index: usize,
@@ -29,6 +33,7 @@ impl TabsState {
 pub struct StatefulList<T> {
     pub state: ListState,
     pub items: Vec<T>,
+    pub nb_items: usize,
 }
 
 impl<T> StatefulList<T> {
@@ -36,20 +41,28 @@ impl<T> StatefulList<T> {
         StatefulList {
             state: ListState::default(),
             items: Vec::new(),
+            nb_items: 0,
         }
     }
 
     pub fn with_items(items: Vec<T>) -> StatefulList<T> {
-        StatefulList {
-            state: ListState::default(),
-            items,
+        // Unsafe because of access to global mut var
+        unsafe { 
+            let mut state =  ListState::default();
+            state.select(Some(SELECTED));
+
+            StatefulList {
+                state,
+                items,
+                nb_items: 0,
+            }
         }
     }
 
     pub fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
-                if i >= self.items.len() - 1 {
+                if i >= self.nb_items - 1 {
                     0
                 } else {
                     i + 1
@@ -58,13 +71,14 @@ impl<T> StatefulList<T> {
             None => 0,
         };
         self.state.select(Some(i));
+        unsafe { SELECTED = i; }
     }
 
     pub fn previous(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
                 if i == 0 {
-                    self.items.len() - 1
+                    self.nb_items - 1
                 } else {
                     i - 1
                 }
@@ -72,6 +86,7 @@ impl<T> StatefulList<T> {
             None => 0,
         };
         self.state.select(Some(i));
+        unsafe { SELECTED = i; }
     }
 
     pub fn unselect(&mut self) {
