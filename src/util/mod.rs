@@ -1,24 +1,32 @@
 pub mod event;
 
 use tui::widgets::ListState;
+use crate::Date;
 
 /*
  * Save the selected item index to keep the selection across UI refresh.
  */
-static mut SELECTED: usize = 0;
+static mut SELECTED_ENTRY: usize = 0;
+static mut SELECTED_TAB: usize = 0;
 
 pub struct TabsState<> {
-    pub titles: Vec<String>,
+    pub titles: Vec<Date>,
     pub index: usize,
 }
 
 impl TabsState {
-    pub fn new(titles: Vec<String>) -> TabsState {
-        TabsState { titles, index: 0 }
+    pub fn new(titles: Vec<Date>) -> TabsState {
+        unsafe {
+            TabsState {
+                titles,
+                index: SELECTED_TAB,
+            }
+        }
     }
 
     pub fn next(&mut self) {
         self.index = (self.index + 1) % self.titles.len();
+        unsafe { SELECTED_TAB = self.index; }
     }
 
     pub fn previous(&mut self) {
@@ -27,6 +35,7 @@ impl TabsState {
         } else {
             self.index = self.titles.len() - 1;
         }
+        unsafe { SELECTED_TAB = self.index; }
     }
 }
 
@@ -49,7 +58,7 @@ impl<T> StatefulList<T> {
         // Unsafe because of access to global mut var
         unsafe {
             let mut state =  ListState::default();
-            state.select(Some(SELECTED));
+            state.select(Some(SELECTED_ENTRY));
 
             StatefulList {
                 state,
@@ -71,7 +80,7 @@ impl<T> StatefulList<T> {
             None => 0,
         };
         self.state.select(Some(i));
-        unsafe { SELECTED = i; }
+        unsafe { SELECTED_ENTRY = i; }
     }
 
     pub fn previous(&mut self) {
@@ -86,7 +95,7 @@ impl<T> StatefulList<T> {
             None => 0,
         };
         self.state.select(Some(i));
-        unsafe { SELECTED = i; }
+        unsafe { SELECTED_ENTRY = i; }
     }
 
     pub fn unselect(&mut self) {

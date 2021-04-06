@@ -7,7 +7,7 @@ use tui::{
     widgets::{Block, Borders, List, ListItem, Tabs},
     Frame,
 };
-use crate::{PROCESSES, LOGS, Date};
+use crate::{PROCESSES, LOGS, DATES};
 use crate::net::Process;
 use crate::database::get_procs;
 
@@ -34,7 +34,7 @@ impl<'a> App<'a> {
         App {
             title,
             should_quit: false,
-            tabs: TabsState::new(Date::get_dates_str()),
+            tabs: TabsState::new(DATES.lock().unwrap().to_vec()),
             show_logs: true,
             show_help: true,
             show_tcp: false,
@@ -127,7 +127,7 @@ impl<'a> App<'a> {
             }
         }
         self.logs = StatefulList::with_items(LOGS.lock().unwrap().to_vec());
-        self.tabs = TabsState::new(Date::get_dates_str());
+        self.tabs = TabsState::new(DATES.lock().unwrap().to_vec());
     }
 }
 
@@ -168,9 +168,8 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 }
 
 pub fn draw_tabs<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
-    let titles = app
-        .tabs
-        .titles
+    let titles: Vec<String> = app.tabs.titles.iter().map( |t| t.str_form.to_string() ).collect();
+    let titles = titles
         .iter()
         .map(|t| Spans::from(Span::styled(t, Style::default().fg(Color::Green))))
         .collect();

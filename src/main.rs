@@ -43,7 +43,7 @@ enum ExitCode {
 }
 
 #[derive(Clone)]
-struct Date {
+pub struct Date {
     pub int_form: u32,
     pub str_form: String, // MM/DD
 }
