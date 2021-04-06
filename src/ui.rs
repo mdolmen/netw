@@ -1,7 +1,7 @@
 use crate::util::{StatefulList, TabsState};
 use tui::{
     backend::Backend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, List, ListItem, Tabs},
@@ -148,22 +148,6 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .split(f.size());
 
     /*
-     * Draw tabs.
-     */
-    let titles = app
-        .tabs
-        .titles
-        .iter()
-        .map(|t| Spans::from(Span::styled(t, Style::default().fg(Color::Green))))
-        .collect();
-
-    let tabs = Tabs::new(titles)
-        .block(Block::default().borders(Borders::ALL).title(app.title))
-        .highlight_style(Style::default().fg(Color::Yellow))
-        .select(app.tabs.index);
-    f.render_widget(tabs, zones[0]);
-
-    /*
      * Create the layout for the central zone. Either one big window or 2 horizontal ones if the
      * user wants to show the logs.
      */
@@ -177,10 +161,28 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .direction(Direction::Horizontal)
         .split(zones[1]);
 
-    /*
-     * Draw process list.
-     */
-    // TODO: make it a function
+    draw_tabs(f, app, zones[0]);
+    draw_procs(f, app, central_zones[0]);
+    draw_optionals(f, app, central_zones[1]);
+    draw_filter(f, app, zones[2]);
+}
+
+pub fn draw_tabs<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
+    let titles = app
+        .tabs
+        .titles
+        .iter()
+        .map(|t| Spans::from(Span::styled(t, Style::default().fg(Color::Green))))
+        .collect();
+
+    let tabs = Tabs::new(titles)
+        .block(Block::default().borders(Borders::ALL).title(app.title))
+        .highlight_style(Style::default().fg(Color::Yellow))
+        .select(app.tabs.index);
+    f.render_widget(tabs, area);
+}
+
+pub fn draw_procs<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
     let style0 = Style::default().add_modifier(Modifier::BOLD);
     let style1 = Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD);
 
@@ -222,11 +224,10 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .block(Block::default().borders(Borders::ALL).title(" Processes "))
         .highlight_style(Style::default().fg(Color::Green));
 
-    f.render_stateful_widget(entries, central_zones[0], &mut app.procs.state);
+    f.render_stateful_widget(entries, area, &mut app.procs.state);
+}
 
-    /*
-     * Create the optional central right block layout.
-     */
+pub fn draw_optionals<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
     if app.show_logs || app.show_help {
         // TODO: make it a function
         let constraints = if app.show_logs && app.show_help {
@@ -234,10 +235,10 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         } else {
             vec![Constraint::Percentage(100)]
         };
-        let central_right_zones = Layout::default()
+        let panes = Layout::default()
             .constraints(constraints)
             .direction(Direction::Vertical)
-            .split(central_zones[1]);
+            .split(area);
 
         /*
          * Draw logs.
@@ -255,7 +256,7 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                 .highlight_style(Style::default().add_modifier(Modifier::BOLD))
                 .highlight_symbol("> ");
 
-            f.render_widget(logs, central_right_zones[0]);
+            f.render_widget(logs, panes[0]);
         }
 
         /*
@@ -273,16 +274,15 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                 .block(Block::default().borders(Borders::ALL).title(" Help "))
                 .highlight_style(Style::default().add_modifier(Modifier::BOLD));
 
-            let id = central_right_zones.len() - 1;
-            f.render_widget(help, central_right_zones[id]);
+            let id = panes.len() - 1;
+            f.render_widget(help, panes[id]);
         }
     }
+}
 
-    /*
-     * Draw the summary.
-     */
-    let summary = Block::default()
-         .title(" Summary ")
+pub fn draw_filter<B: Backend>(f: &mut Frame<B>, _app: &mut App, area: Rect) {
+    let filter = Block::default()
+         .title(" Filter (TODO) ")
          .borders(Borders::ALL);
-    f.render_widget(summary, zones[2]);
+    f.render_widget(filter, area);
 }
