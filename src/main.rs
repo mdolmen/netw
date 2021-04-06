@@ -147,7 +147,7 @@ fn tui(runnable: Arc<AtomicBool>, source: String) -> Result<(), Box<dyn Error>> 
         app.db(db);
     }
 
-    app.entries(procs);
+    app.procs(procs);
 
     let events = Events::with_config(Config {
         tick_rate: Duration::from_millis(tick_rate),

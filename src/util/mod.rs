@@ -33,7 +33,7 @@ impl TabsState {
 pub struct StatefulList<T> {
     pub state: ListState,
     pub items: Vec<T>,
-    pub nb_items: usize,
+    pub nb_entries: usize,
 }
 
 impl<T> StatefulList<T> {
@@ -41,20 +41,20 @@ impl<T> StatefulList<T> {
         StatefulList {
             state: ListState::default(),
             items: Vec::new(),
-            nb_items: 0,
+            nb_entries: 0,
         }
     }
 
     pub fn with_items(items: Vec<T>) -> StatefulList<T> {
         // Unsafe because of access to global mut var
-        unsafe { 
+        unsafe {
             let mut state =  ListState::default();
             state.select(Some(SELECTED));
 
             StatefulList {
                 state,
                 items,
-                nb_items: 0,
+                nb_entries: 0,
             }
         }
     }
@@ -62,7 +62,7 @@ impl<T> StatefulList<T> {
     pub fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
-                if i >= self.nb_items - 1 {
+                if i >= self.nb_entries - 1 {
                     0
                 } else {
                     i + 1
@@ -78,7 +78,7 @@ impl<T> StatefulList<T> {
         let i = match self.state.selected() {
             Some(i) => {
                 if i == 0 {
-                    self.nb_items - 1
+                    self.nb_entries - 1
                 } else {
                     i - 1
                 }
