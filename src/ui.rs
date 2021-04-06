@@ -171,12 +171,12 @@ pub fn draw_tabs<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
     let titles: Vec<String> = app.tabs.titles.iter().map( |t| t.str_form.to_string() ).collect();
     let titles = titles
         .iter()
-        .map(|t| Spans::from(Span::styled(t, Style::default().fg(Color::Green))))
+        .map(|t| Spans::from(Span::styled(t, Style::default().fg(Color::White))))
         .collect();
 
     let tabs = Tabs::new(titles)
         .block(Block::default().borders(Borders::ALL).title(app.title))
-        .highlight_style(Style::default().fg(Color::Yellow))
+        .highlight_style(Style::default().fg(Color::Green))
         .select(app.tabs.index);
     f.render_widget(tabs, area);
 }
@@ -185,12 +185,18 @@ pub fn draw_procs<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
     let style0 = Style::default().add_modifier(Modifier::BOLD);
     let style1 = Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD);
 
-    // TODO: filter process for which p.date = date
+    let mut date = 0;
+    if app.tabs.titles.len() > 0 {
+        date = app.tabs.titles[app.tabs.index].int_form;
+    }
 
     let entries: Vec<ListItem> = app
         .procs
         .items
         .iter()
+        .filter(|p| {
+            p.date == date
+        })
         .flat_map(|p| {
             let proc_fmt = Spans::from(vec![
                 Span::styled(p.overview_str(), style0),
@@ -200,15 +206,17 @@ pub fn draw_procs<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
             let mut tmp = vec![ ListItem::new(proc_fmt) ];
 
             if app.show_tcp || app.show_all {
-                let mut tlinks = p.get_tlinks().iter().map(
-                    |t| ListItem::new(t.to_string())
+                let mut tlinks = p.get_tlinks()
+                    .iter()
+                    .map(|t| ListItem::new(t.to_string())
                 ).collect();
                 tmp.append(&mut tlinks);
             }
 
             if app.show_udp || app.show_all {
-                let mut ulinks = p.get_ulinks().iter().map(
-                    |u| ListItem::new(u.to_string())
+                let mut ulinks = p.get_ulinks()
+                    .iter()
+                    .map(|u| ListItem::new(u.to_string())
                 ).collect();
                 tmp.append(&mut ulinks);
             }
