@@ -43,13 +43,13 @@ impl<'a> App<'a> {
             procs: StatefulList::new(),
             logs: StatefulList::with_items(LOGS.lock().unwrap().to_vec()),
             help: StatefulList::with_items(vec![
-                String::from("h: display/hide help"),
-                String::from("l: display/hide logs"),
+                String::from("H: display/hide help"),
+                String::from("L: display/hide logs"),
                 String::from("t: display/hide TCP"),
                 String::from("u: display/hide UDP"),
                 String::from("a: display/hide all (TCP+UDP)"),
                 String::from(""),
-                String::from("UP/DOWN or j/k: move down/up"),
+                String::from("Arrows or hjkl: move around (main pane and tabs)"),
                 String::from("q: quit"),
             ]),
             enhanced_graphics,
@@ -89,6 +89,9 @@ impl<'a> App<'a> {
             'q' => {
                 self.should_quit = true;
             }
+            'h' => {
+                self.tabs.previous();
+            }
             'j' => {
                 self.procs.next();
             }
@@ -96,9 +99,12 @@ impl<'a> App<'a> {
                 self.procs.previous();
             }
             'l' => {
+                self.tabs.next();
+            }
+            'L' => {
                 self.show_logs = !self.show_logs;
             }
-            'h' => {
+            'H' => {
                 self.show_help = !self.show_help;
             }
             't' => {
