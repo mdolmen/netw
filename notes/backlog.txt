@@ -1,0 +1,3 @@
+Add support for network layer interception (ICMP, ARP)
+Compute some sort of hash to diff with external interception
+Test/reverse netlimiter (https://www.netlimiter.com/)?
