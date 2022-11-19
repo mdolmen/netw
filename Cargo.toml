@@ -1,5 +1,5 @@
 [package]
-name = "sekhmet"
+name = "netw"
 version = "0.6.0"
 authors = ["Mathieu Dolmen <mathieu.dolmen@gmail.com>"]
 edition = "2018"

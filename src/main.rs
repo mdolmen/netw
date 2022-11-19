@@ -118,7 +118,7 @@ fn tui(runnable: Arc<AtomicBool>, source: String) -> Result<(), Box<dyn Error>> 
     let mut tick_rate = 500;
     let enhanced_graphics = true;
     let procs: Vec<Process>;
-    let mut app = ui::App::new(" Sekhmet ", enhanced_graphics);
+    let mut app = ui::App::new(" netw ", enhanced_graphics);
 
     /*
      * Select the input source to display data from.

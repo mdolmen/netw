@@ -14,14 +14,14 @@ args:
         short: s
         long: source
         help: Select the input source for the UI
-        default_value: sekhmet.db
+        default_value: netw.db
         required: false
         takes_value: true
     - output:
         short: o
         long: ouptut
         help: Database filename to save information to
-        default_value: sekhmet.db
+        default_value: netw.db
         required: false
         takes_value: true
     - frequency:

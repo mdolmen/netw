@@ -606,7 +606,7 @@ fn group_bytes(bytes: isize) -> (f64, DataUnit) {
 /*
  * Output only a limited amount information for testing purposes.
  *
- * Typical TCP traffic interception (Sekhmet output) for iperf:
+ * Typical TCP traffic interception (netw output) for iperf:
  *     iperf3 (221251):
  *            10.0.10.100:5201 <-> 10.0.10.200:49289 RX: 411 TX: 299
  *            10.0.10.100:5201 <-> 10.0.10.200:47159 RX: 5368709120 TX: 0
@@ -677,7 +677,7 @@ pub fn log_iperf_to_file() -> std::io::Result<()> {
         udp4_rx, udp4_tx, udp6_rx, udp6_tx
     );
 
-    let mut file = File::create("sekhmet.json")?;
+    let mut file = File::create("netw.json")?;
     file.write_all(output.to_string().as_bytes())?;
 
     Ok(())
