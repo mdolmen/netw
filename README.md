@@ -1,49 +1,47 @@
-Sekhmet
-=======
+# NETW
 
-Goddess of war and destroyer of the ennemies. (*britanicca.com*)
+The network watcher.
 
+![netw UI](ui.png "netw UI")
 
-What?
------
+## What?
 
-I want to see information about network connections (open channels, amount of
-data being transferred, etc.), in real-time, grouped by applications.
+Record network traffic (connections, amount of data transferred) per process and
+per connection.
 
-I should be able to block certain connections, white/black list specific target
-or a whole application from communicating with the outside world.
+Ideally it should be able to block certain connections.
+* how?
+* as a backend of `opensnitch`?
 
-In other word: a software firewall.
+Well, I hadn't noticed but it's been a year now that `opensnitch` added support
+to eBPF to capture packets... The only thing `netw` does differently is to
+keep track of the amount of data being transferred.
 
+Just use that: https://github.com/evilsocket/opensnitch
 
-Current approach
-----------------
+## Status
 
-* eBPF to filter packets
-* written in rust for portability, efficiency, safety, etc.
-* UI to see what's happening and to change the rules
-	* Web UI (complete view) + Gnome extension (quick look)
-
-
-Status
-------
-
-Working version.
+Working version. Last tested kernel: `5.19` (Fedora 36).
 
 * Display processes communicating over the network
 * Display amount of data transferred per link and per process
-* All links are displayed, wether established or not
+* All links are displayed, wether currently established or not
 * TCP and UDP, IPv4 and IPv6
 
 
-How to use
-----------
+## How to use
 
 Run:
 
 ```bash
 cargo build
-sudo ./target/debug/sekhmet
+
+# Start a daemon to continuously populate the DB
+sudo ./target/debug/sekhmet -m daemon
+
+# Start the UI (real-time if daemon running or static content of the DB is one
+# exists
+sudo ./target/debug/sekhmet -m ui
 ```
 
 Unit tests:
@@ -55,7 +53,7 @@ Unit tests:
 cargo test -- --test-threads=1
 ```
 
-Test that you actually intercept something:
+To test that you actually intercept something:
 
 ```bash
 cd tests
