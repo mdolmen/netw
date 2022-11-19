@@ -137,10 +137,11 @@ fn tui(runnable: Arc<AtomicBool>, source: String) -> Result<(), Box<dyn Error>> 
 
         for date in get_dates(&db).iter() {
             let tmp = *date / 10000;
+            let year = *date % 100;
             let month = tmp / 100;
             let day = tmp % 100;
 
-            let date_str = String::from(format!("{:02}/{:02}", month, day));
+            let date_str = String::from(format!("{:02}/{:02}/{:02}", month, day, year));
             dates.push( Date { int_form: *date, str_form: date_str } );
         };
 
